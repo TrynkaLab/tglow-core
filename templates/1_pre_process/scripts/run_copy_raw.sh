@@ -1,13 +1,13 @@
 #!/bin/bash
 # Usage
+# run_copy_raw.sh <batch_file> <output dir>
+# batch file should be a list of plate names, one per line
+
 # copy_raw.py authored by Martin Prete
-# Also edited the job names to make them easier to parse
-####################################################################
 # Script invocation:
 # python actions/copy_raw.py \
 #       --input_file="/path/to/raw/export/Images/Index.xml" \
 #       --output_path="/lustre/scratch/raw" 
-####################################################################
 
 # Configure bash to work with conda
 source /software/hgi/installs/anaconda3/etc/profile.d/conda.sh
@@ -20,5 +20,15 @@ conda activate /software/teamtrynka/basicpy
 
 # Setup variables
 PIPELINE_DIR="/software/teamtrynka/tglow-core"
+BATCH="$1"
+OUT_DIR="$2"
 
-python ${PIPELINE_DIR}/core/copy_raw.py $0
+while read plate;
+do
+echo "[INFO] ${file}"
+
+python ${PIPELINE_DIR}/core/copy_raw.py \
+--input_file="/nfs/t217_imaging/HarmonyExports/${plate}/Images/Index.xml" \
+--output_path="${OUT_DIR}"
+
+done < $BATCH

@@ -12,7 +12,7 @@ PROJECT_DIR="/lustre/scratch125/humgen/projects/cell_activation_tc/projects/${PR
 OUT_DIR="${PROJECT_DIR}/../output/<OUTPUT>"
 
 # Job array file, one job per line <well> <plate>
-ARRAY_FILE="${PROJECT_DIR}/batch_files/<BATCH FILE>"
+ARRAY_FILE="${PROJECT_DIR}/2_feature_extraction/scripts/batch_files/<BATCH FILE>"
 
 # Software variables 
 PIPELINE_DIR="/software/teamtrynka/tglow-core"
