@@ -1,7 +1,7 @@
 
 
 # Load the core tglow functions
-for (file in list.files(paste0("/software/teamtrynka/tglow-core/", "tglow-r-core"), full.names=T)) {
+for (file in list.files(paste0("/software/teamtrynka/tglow-core/", "r-core"), full.names=T)) {
   source(file)
 }
 
