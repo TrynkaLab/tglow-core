@@ -1,7 +1,7 @@
 
 
 # Load the core tglow functions
-for (file in list.files(paste0("/softare/teamtrynka/tglow-core/", "tglow-r-core"), full.names=T)) {
+for (file in list.files(paste0("/software/teamtrynka/tglow-core/", "tglow-r-core"), full.names=T)) {
   source(file)
 }
 
@@ -13,7 +13,7 @@ path       <- paste0("../../2_feature_extraction/output/", prefix, suffix)
 
 
 # Sheet with sample metadata in standardized format
-sample.sheet <- "https://docs.google.com/spreadsheets/d/1gdv1ZN9kQm7UHSqZ9urset7VoljR3r4xxt_2xYlaSqA/edit#gid=0"
+sample.sheet <- "http://link/to/google/sheet"
 
 # Sheet with cell and feature filters following standardized format
-filter.sheet <- "https://docs.google.com/spreadsheets/d/1dpgoigdCFhnE8zPEuqe-M-L1OIz2S_vUVzaZkDiKU7A/edit#gid=1278275764"
+filter.sheet <- "http://link/to/google/sheet"

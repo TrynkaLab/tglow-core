@@ -21,9 +21,6 @@ PIPELINE="${PIPELINE_DIR}/cellprofiler/${PROJECT}/<.CPPIPE>"
 # Path with raw images
 IMG_RAW="${PROJECT_DIR}/1_pre_process/output/raw"
 
-# Path with pretrained basicpy models
-BASICPY_DIR="${PROJECT_DIR}/1_pre_process/output/basicpy_models"
-
 #------------------------------------------------------------------------------------
 # Software settings
 MERGER="${PIPELINE_DIR}/core/merge_tiffs_align.py"
@@ -42,6 +39,9 @@ PLATE_MERGE="$(sed -n "${LSB_JOBINDEX}p" ${ARRAY_FILE} | awk '{print $3}')"
 PLANES="1 2 3 4 5 6 7 8 9 10 11 12 13 14"
 FIELDS="1 2 3 4 5 6 7 8 9"
 CHANNELS="1 2 3 4 5"
+
+# Path with pretrained basicpy models
+BASICPY_DIR="${PROJECT_DIR}/1_pre_process/output/basicpy_models"
 
 # Supply basicpy models, if used comment blank below, if no models to be used, use blank below
 BASICPY="--basicpy_model \
