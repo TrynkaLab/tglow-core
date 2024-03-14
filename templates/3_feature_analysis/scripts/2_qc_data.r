@@ -10,7 +10,6 @@ library(matrixStats)
 library(irlba)
 library(magick)
 library(Rfast)
-library(viridis)
 
 # ------------------------------------------------------------------------------
 # Image level QC
@@ -57,7 +56,7 @@ for (plate in unique(cur.meta[,"qc_group"])) {
   outlier <- outlier > 0
   outlier.images[cur][outlier] <- T
 
-  plots[[plate]] <- theme.plain(xy.plot(tglow.mod.zscore(pca$x[,pc1]),
+  plots[[plate]] <- theme.plain(tglow.plot.xy(tglow.mod.zscore(pca$x[,pc1]),
                                         tglow.mod.zscore(pca$x[,pc2]),
                                         xlab=paste0("PC", pc1),
                                         ylab=paste0("PC", pc2),
@@ -168,12 +167,13 @@ fcols[["fixation"]]        <- output$meta[output$cells$Image_ImageNumber_Global,
 pdf(width=6, height=5, file=paste0("../output/plots/",prefix,"all_cells_umaps_categorical_",suffix,".pdf"))
 
 for (fcol in names(fcols)) {
-  p1 <- xy.plot(um[,1],
+  p1 <- tglow.plot.xy(um[,1],
                 um[,2],
                 do.lm=F,
                 xlab="umap 1",
                 ylab="umap 2",
                 col=fcols[[fcol]],
+                raster=T,
                 alpha=0.25) + scale_color_viridis_c(name=fcol)
   theme.plain(p1)
 }
@@ -189,12 +189,13 @@ fcols[["Ki67 texture entropy 4"]] <- output$cells$nucl_Texture_Entropy_ki67_4_03
 
 pdf(width=6, height=5, file=paste0("../output/plots/",prefix,"all_cells_umaps_numeric_",suffix,".pdf"))
 for (fcol in names(fcols)) {
-  p1 <- xy.plot(um[,1],
+  p1 <- tglow.plot.xy(um[,1],
                 um[,2],
                 do.lm=F,
                 xlab="umap 1",
                 ylab="umap 2",
                 col=fcols[[fcol]],
+                raster=T,
                 alpha=0.25) + scale_color_viridis_c(name=fcol)
   theme.plain(p1)
 }

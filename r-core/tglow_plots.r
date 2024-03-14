@@ -1,4 +1,6 @@
 library(ggplot2)
+library(viridis)
+library(pheatmap)
 
 ##------------------------------------------------------------------------------
 ## Simple plotting theme for ggplot using arial family font
@@ -227,7 +229,7 @@ tglow.plot.img.set <- function(imgs, ncol,  main="", main.sub=NULL, text.col="wh
 
 #-------------------------------------------------------------------------------
 #' JULIE NEW: Plot a scatter plot faceted by variable z
-#' 
+#' This is redundant with tglow.plot.xy?
 #' 
 tglow.plot.scatter.grouped <- function(cells,
                                        feature.x,
@@ -238,6 +240,7 @@ tglow.plot.scatter.grouped <- function(cells,
                                        zlab=NULL,
                                        main=NULL,
                                        bins=100) {
+  cat("[WARNING] IS THIS REDUNDANT WITH tglow.plot.xy????\n")
   
   # Build the plot
   df.plot <- data.frame(x=cells[, feature.x],
@@ -314,9 +317,11 @@ tglow.make.locale.plot.df <- function(data, feature.pattern, facet) {
   return(df.plot2)
 }
 
+
 #-------------------------------------------------------------------------------
-# Localization plot
-tglow.make.locale.plot <- function(df.plot, feature.label) {
+#' Localization plot
+tglow.plot.make.locale <- function(df.plot, feature.label) {
+
   p1 <- ggplot(data=df.plot,
                mapping=aes(x=factor(Group.1, levels=time.order),
                            y=x,
@@ -336,15 +341,190 @@ tglow.make.locale.plot <- function(df.plot, feature.label) {
   return(p1)
 }
 
-##------------------------------------------------------------------------------
-## GGplot scatterplot
-xy.plot <- function(x, y, xlab="X", ylab="Y", main=NA, main.prefix="", size=1, col="black", fixed=F, alpha=0.75, shape=16, line.col="blue", do.lm=T, method="lm", lm.group=NULL, raster=F, dpi=300) {
+
+#------------------------------------------------------------------------------
+# Correlation plot - need to fix the color thing
+tglow.plot.cor <- function(dataset, x, y, color = NULL, assay = "cells_norm", facet = NULL, n.dots = NULL, log.x = NULL, log.y = NULL){
+  
+  # Find x and y 
+  if(x %in% colnames(dataset$meta)){
+    x.data <- dataset[["meta"]][dataset[[assay]]$Image_ImageNumber_Global, x]
+  } else if (x %in% colnames(dataset$cells_norm)){
+    x.data <- dataset[[assay]][, x]
+  }
+  
+  if(y %in% colnames(dataset$meta)){
+    y.data <- dataset[["meta"]][dataset[[assay]]$Image_ImageNumber_Global, y]
+  } else if (y %in% colnames(dataset$cells_norm)){
+    y.data <- dataset[[assay]][, y]
+  }
+  
+  # Create plotting dataframe
+  df <- data.frame(x = x.data,
+                   y = y.data)
+  
+  # Add color variable if necessary
+  if(!is.null(color)){
+    if(color %in% colnames(dataset$meta)){
+      df$c <- dataset[["meta"]][dataset[[assay]]$Image_ImageNumber_Global, color]
+    } else if (color %in% colnames(dataset$cells_norm)){
+      df$c <- dataset[[assay]][, color]
+    }
+  }
+  
+  # Add facet variable if necessary
+  if(!is.null(facet)){
+    df$f <- dataset[["meta"]][dataset[[assay]]$Image_ImageNumber_Global, facet]
+  }
+  
+  # Build base plot (with or without colored dots)
+  if(!is.null(color)){
+    p <- ggplot(df) +
+      geom_point(aes(x, y, color = c), size = 0.5) +
+      theme_bw() +
+      theme(panel.grid = element_blank()) +
+      scale_color_viridis_d()
+  } else{ 
+    p <- ggplot(df) +
+      geom_point(aes(x, y)) +
+      theme_bw() +
+      theme(panel.grid = element_blank())
+  }
+  
+  # Log axis
+  if(!is.null(log.x)){p <- p + scale_x_log10()}
+  
+  if(!is.null(log.y)){p <- p + scale_x_log10()}
+  
+  # Add facet
+  if(!is.null(facet)){p <- p + facet_wrap(~f)}
+  
+  # Add axis labels
+  p <- p + labs(x = x,
+             y = y)
+  
+  return(p)
+  
+}
+
+
+#------------------------------------------------------------------------------
+#' Violin plot - need to fix the color thing
+tglow.plot.violin <- function(dataset, x, y, color = NULL, assay.y = "cells_norm", assay.color = "cells_norm", facet = NULL, n.dots = NULL){
+  
+  # Create plotting dataframe
+  df <- data.frame(x = dataset[["meta"]][dataset[[assay.y]]$Image_ImageNumber_Global, x],
+                   y = dataset[[assay.y]][, y])
+  
+  
+  # Add color variable if necessary
+  if(!is.null(color)){
+    
+    if(color %in% colnames(dataset$meta)){
+      df$c <- dataset[["meta"]][dataset[[assay.y]]$Image_ImageNumber_Global, color]
+      
+    } else if (color %in% colnames(dataset$cells_norm)){
+      df$c <- dataset[[assay.color]][, color]
+    }
+    
+  }
+  
+  # Add facet variable if necessary
+  if(!is.null(facet)){
+    df$f <- dataset[["meta"]][, f]
+  }
+  
+  # Build base plot
+  p <- ggplot(df) +
+    geom_violin(aes(x, y, fill = c), width = 1.5, size = 1, draw_quantiles = c(0.25, 0.5, 0.75), scale = "area") +
+    theme_bw() +
+    theme(panel.grid = element_blank()) +
+    labs(y = y) +
+    scale_fill_viridis_d() +
+    labs(x = "") +
+    theme(legend.position = "none")
+  
+  # Add points
+  if(!is.null(n.dots)){
+    # Subset data
+    df.sub <- slice_sample(df, n = n.dots)
+    
+    p <- p + geom_jitter(data = df.sub, aes(x, y), size = 0.5, height = 0, width = 0.1, color = "grey")
+
+  }
+  
+  # Add facet
+  if(!is.null(facet)){
+    p <- p + facet_wrap(~f) 
+  }
+  
+  return(p)
+}
+
+
+#------------------------------------------------------------------------------
+#' Boxplot plot - need to fix the color thing
+tglow.plot.boxplot <- function(dataset, x, y, color = NULL, assay.y = "cells", assay.color = "cells_norm", facet = NULL, n.dots = NULL){
+  
+  # Create plotting dataframe
+  df <- data.frame(x = dataset[["meta"]][dataset[[assay.y]]$Image_ImageNumber_Global, x],
+                   y = dataset[[assay.y]][, y])
+  
+  # Add color variable if necessary
+  if(!is.null(color)){
+    
+    if(color %in% colnames(dataset$meta)){
+      df$c <- dataset[["meta"]][dataset[[assay.y]]$Image_ImageNumber_Global, color]
+    } else if (color %in% colnames(dataset$cells_norm)){
+      df$c <- dataset[[assay.color]][, color]
+    }
+
+  }
+  
+  # Add facet variable if necessary
+  if(!is.null(facet)){
+    df$f <- dataset[["meta"]][, f]
+  }
+  
+  # Build base plot
+  p <- ggplot(df) +
+    geom_boxplot(aes(x, y, fill = c)) +
+    theme_bw() +
+    theme(panel.grid = element_blank()) +
+    labs(y = y) +
+    scale_fill_viridis_d() +
+    labs(x = "") +
+    theme(legend.position = "none")
+  
+  # Add points
+  if(!is.null(n.dots)){
+    # Subset data
+    df.sub <- slice_sample(df, n = n.dots)
+    p <- p + geom_jitter(data = df.sub, aes(x, y), size = 0.5, height = 0, width = 0.1, color = "grey")
+  }
+  
+  # Add facet
+  if(!is.null(facet)){
+    p <- p + facet_wrap(~f)
+  }
+  
+  return(p)
+
+}
+
+
+#------------------------------------------------------------------------------
+#' GGplot scatterplot
+tglow.plot.xy <- function(x, y, xlab="X", ylab="Y", main=NA, main.prefix="", size=1, col="black", fixed=F, alpha=0.75, shape=16, line.col="blue", do.lm=T, method="lm", lm.group=NULL, raster=F, dpi=300, facet=NULL, facet.ncol=NULL) {
   
   df.plot <- data.frame(x=x,
                         y=y)
-  if (fixed) {
-    lims <- c(min(c(x, y), na.rm=T), max(c(x, y), na.rm=T))  
-  }
+                        
+  # Fix axis limits between x and y
+  if (fixed) {lims <- c(min(c(x, y), na.rm=T), max(c(x, y), na.rm=T))  }
+  
+  # Facet y or n
+  if (!is.null(facet)) {df.plot$facet <- facet}
   
   if (nrow(df.plot) > 3) {
     ct <- cor.test(df.plot$x, df.plot$y)
@@ -383,11 +563,12 @@ xy.plot <- function(x, y, xlab="X", ylab="Y", main=NA, main.prefix="", size=1, c
     xlab(xlab) +
     ylab(ylab) 
   
+  # Add linear line
   if (do.lm) {
-    
     p <- p + geom_smooth(method=method, col=line.col, inherit.aes = F, mapping=aes(x=x, y=y, group=lm.group)) 
   }
   
+  # If axis are fixed, add an abline and set limits
   if (fixed) {
     p <- p + 
       xlim(lims) +
@@ -396,96 +577,30 @@ xy.plot <- function(x, y, xlab="X", ylab="Y", main=NA, main.prefix="", size=1, c
       ylim(lims) 
   }
   
-  
-  
+  # Add title
   if (is.na(main) & do.lm) {
     main <- paste0(main.prefix, "R: ", format(ct$estimate, digits=2),
                             " p-value: ", format(ct$`p.value`, digits=2, scientific=T))
   }
   
-  if (!is.na(main)) {
-    p <- p + ggtitle(main)
-  }
+  if (!is.na(main)) {p <- p + ggtitle(main)}
+  
+  if (!is.null(facet)) {p <- p + facet_wrap(~facet, ncol=facet.ncol)}
+
   
   
   return(p)
 }
 
 
-##------------------------------------------------------------------------------
-## Boxplot plot using ggplot
-##------------------------------------------------------------------------------
-box.plot <- function(x, y, xlab="x", ylab="y", main="", col=NULL, fill=NULL, do.beeswarm=F, do.test=F, ref.level=NULL, cex=3, step.increase=0.25, levels=NULL) {
-  
-  x <- as.character(x)
-  
-  df.plot <- data.frame(x=x, y=y)
-
-  if (do.test) {
-    if (is.null(ref.level)) {
-      combos <- expand.grid(unique(x)[1], unique(x))
-    } else {
-      combos <- expand.grid(ref.level, unique(x))
-    }
-    combos <- as.matrix(combos)
-    combos <- combos[combos[,1] != combos[,2],, drop=F]
-    
-    final.combos <- list()
-    for (combo in 1:nrow(combos)) {
-      final.combos[[combo]] <- c(as.character(combos[combo,]))
-    }
-  }
-  
-  if (is.null(levels)) {
-    df.plot$x <- factor(df.plot$x, levels=unique(x))
-  } else {
-    df.plot$x <- factor(df.plot$x, levels=levels)
-    
-  }
-  
-  p1 <- ggplot(data=df.plot, mapping=aes(x=x, group=x, y=y, fill=fill)) +
-    geom_violin()
-    
-  
-    if (do.beeswarm) {
-      if (!is.null(col)) {
-        p1 <- p1 + geom_beeswarm(cex=cex, mapping=aes(color=col))
-      } else {
-        p1 <- p1 + geom_beeswarm(cex=cex)
-      }
-    }
-
-    p1 <- p1 + geom_boxplot(width=0.2, alpha=0.5) +
-    xlab(xlab) +
-    ylab(ylab) +
-    ggtitle(main)
-  
-  if (do.test) {
-    if (nrow(combos) >= 1) {
-    step <- sd(y) * step.increase 
-    
-    y.min <- min(y) - sd(y)
-    y.max <- max(y) + sd(y) * 2 + (step * (nrow(combos)))
-
-    p1 <- p1 + geom_signif(comparisons = final.combos, tip_length=0, step_increase=step) +
-      ylim(c(y.min, y.max))
-    
-    }
-  }
-  
-  return(p1)
-}
-
-##------------------------------------------------------------------------------
-# Simple heatmap with auto labels
-##------------------------------------------------------------------------------
-simple.hm <- function(data, cellsize=-1, cellwidth=12, cellheight=12, limit=NULL, cluster=T, range="symmetric", min.value=0, palette=NULL, border=NA, ...) {
+#------------------------------------------------------------------------------
+#' Simple heatmap with auto labels
+tglow.plot.simple.hm <- function(data, cellsize=-1, cellwidth=12, cellheight=12, limit=NULL, cluster=T, range="symmetric", min.value=0, palette=NULL, border=NA, ...) {
   
   if (cellsize > 0) {
     cellwidth  <-  cellsize
     cellheight <- cellsize
   }
-  
   
   if (range == "symmetric") {
     break.list <- seq(-max(abs(data)), max(abs(data)), by=max(abs(data))/100)
@@ -522,6 +637,4 @@ simple.hm <- function(data, cellsize=-1, cellwidth=12, cellheight=12, limit=NULL
              border=border,
              ...)
   }
-
-  
 }
