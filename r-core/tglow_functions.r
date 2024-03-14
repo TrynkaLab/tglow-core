@@ -136,24 +136,16 @@ tglow.run.assoc.twosteps <- function(dataset, predictor, to.correct, assay="cell
     #Find x if it's in cells, agg or in meta
     
     if (predictor %in% colnames(dataset$meta) & assay == "cells_norm") {
-    
         x <- dataset$meta[dataset[["cells"]]$Image_ImageNumber_Global, predictor]
-    
+
         } else if (predictor %in% colnames(dataset$meta) & assay == "agg"){ # Julie added this so we can do it on the aggregated data as well
-      
           x <- dataset$meta[rownames(dataset$agg), predictor]
-    
           } else if (predictor %in% colnames(cur.cells)) {
-      
+
             x <- cur.cells[,predictor]
     
             } else {
-      
               stop("Not a valid response")
-      
-              #cat("[ERROR] Not a valid response\n")
-      
-              #return(NULL)
             }
     
     # Make a dataframe to store the results
@@ -241,9 +233,6 @@ tglow.run.assoc.twosteps <- function(dataset, predictor, to.correct, assay="cell
 
   return(list(res, residuals))  
 }
-
-
-
 
 
 #-------------------------------------------------------------------------------
@@ -546,12 +535,7 @@ tglow.median_by_group <- function(dataset, assay = "cells_norm") {
   return(results)  
 }
 
-
-
-
-
-
-
+#-------------------------------------------------------------------------------
 #' Faster alternative to scale a matrix
 #' https://www.r-bloggers.com/2016/02/a-faster-scale-function/
 fcolScale <- function(x,
@@ -596,289 +580,3 @@ fcolScale <- function(x,
   return(x)
 }
 
-
-
-##------------------------------------------------------------------------------
-# Simple heatmap with auto labels [from Olivier]
-##------------------------------------------------------------------------------
-simple.hm <- function(data, cellsize=-1, cellwidth=12, cellheight=12, limit=NULL, cluster=T, range="symmetric", min.value=0, palette=NULL, border=NA, ...) {
-  
-  if (cellsize > 0) {
-    cellwidth  <-  cellsize
-    cellheight <- cellsize
-  }
-  
-  
-  if (range == "symmetric") {
-    break.list <- seq(-max(abs(data)), max(abs(data)), by=max(abs(data))/100)
-    if (is.null(palette)) {palette="RdBu"}
-    cols       <- colorRampPalette(rev(brewer.pal(n=7, name =palette)))(length(break.list))
-  } else if (range == "absolute") {
-    if (is.null(palette)) {palette="Reds"}
-    break.list <- seq(min.value, max(abs(data)), by=max(abs(data))/100)
-    cols       <- colorRampPalette(c("#FFFFFF",brewer.pal(n=7, name =palette)))(length(break.list))
-  } else if (range == "auto") {
-    break.list <- seq(-min(data), max(data), by=max(abs(data))/100)
-    if (is.null(palette)) {palette="RdBu"}
-    cols       <- colorRampPalette(rev(brewer.pal(n=7, name =palette)))(length(break.list))
-  } else  {
-    cat("[ERROR] range must be symmetric, auto, or aboslute\n")
-  }
-  
-  if (!cluster) {
-    pheatmap(data,
-             breaks=break.list,
-             col=cols,
-             cellwidth=cellwidth,
-             cellheight=cellheight,
-             border=border,
-             cluster_rows = F,
-             cluster_cols = F,
-             ...)
-  } else {
-    pheatmap(data,
-             breaks=break.list,
-             col=cols,
-             cellwidth=cellwidth,
-             cellheight=cellheight,
-             border=border,
-             ...)
-  }
-  
-  
-}
-
-##------------------------------------------------------------------------------
-# Violin plot - need to fix the color thing
-##------------------------------------------------------------------------------
-tglow.plot.violin <- function(dataset, x, y, color = NULL, assay.y = "cells_norm", assay.color = "cells_norm", facet = NULL, n.dots = NULL){
-  
-  # Create plotting dataframe
-  df <- data.frame(x = dataset[["meta"]][dataset[[assay.y]]$Image_ImageNumber_Global, x],
-                   y = dataset[[assay.y]][, y])
-  
-  
-  # Add color variable if necessary
-  if(!is.null(color)){
-    
-    if(color %in% colnames(dataset$meta)){
-      
-      df$c <- dataset[["meta"]][dataset[[assay.y]]$Image_ImageNumber_Global, color]
-      
-    } else if (color %in% colnames(dataset$cells_norm)){
-      
-      df$c <- dataset[[assay.color]][, color]
-      
-    }
-    
-    
-  }
-  
-  # Add facet variable if necessary
-  if(!is.null(facet)){
-    
-    df$f <- dataset[["meta"]][, f]
-    
-  }
-  
-
-  # Build base plot
-  p <- ggplot(df) +
-    geom_violin(aes(x, y, fill = c), width = 1.5, size = 1, draw_quantiles = c(0.25, 0.5, 0.75), scale = "area") +
-    theme_bw() +
-    theme(panel.grid = element_blank()) +
-    labs(y = y) +
-    scale_fill_viridis_d() +
-    labs(x = "") +
-    theme(legend.position = "none")
-  
-  # Add points
-  if(!is.null(n.dots)){
-    
-    # Subset data
-    df.sub <- slice_sample(df, n = n.dots)
-    
-    p <- p + geom_jitter(data = df.sub, aes(x, y), size = 0.5, height = 0, width = 0.1, color = "grey")
-    
-  }
-  
-  # Add facet
-  if(!is.null(facet)){
-    
-    p <- p + facet_wrap(~f)
-    
-  }
-  
-  return(p)
-  
-  
-}
-
-##------------------------------------------------------------------------------
-# Boxplot plot - need to fix the color thing
-##------------------------------------------------------------------------------
-tglow.plot.boxplot <- function(dataset, x, y, color = NULL, assay.y = "cells", assay.color = "cells_norm", facet = NULL, n.dots = NULL){
-  
-  # Create plotting dataframe
-  df <- data.frame(x = dataset[["meta"]][dataset[[assay.y]]$Image_ImageNumber_Global, x],
-                   y = dataset[[assay.y]][, y])
-  
-  
-  # Add color variable if necessary
-  if(!is.null(color)){
-    
-    if(color %in% colnames(dataset$meta)){
-      
-      df$c <- dataset[["meta"]][dataset[[assay.y]]$Image_ImageNumber_Global, color]
-      
-    } else if (color %in% colnames(dataset$cells_norm)){
-      
-      df$c <- dataset[[assay.color]][, color]
-      
-    }
-    
-    
-  }
-  
-  # Add facet variable if necessary
-  if(!is.null(facet)){
-    
-    df$f <- dataset[["meta"]][, f]
-    
-  }
-  
-  
-  # Build base plot
-  p <- ggplot(df) +
-    geom_boxplot(aes(x, y, fill = c)) +
-    theme_bw() +
-    theme(panel.grid = element_blank()) +
-    labs(y = y) +
-    scale_fill_viridis_d() +
-    labs(x = "") +
-    theme(legend.position = "none")
-  
-  # Add points
-  if(!is.null(n.dots)){
-    
-    # Subset data
-    df.sub <- slice_sample(df, n = n.dots)
-    
-    p <- p + geom_jitter(data = df.sub, aes(x, y), size = 0.5, height = 0, width = 0.1, color = "grey")
-    
-  }
-  
-  # Add facet
-  if(!is.null(facet)){
-    
-    p <- p + facet_wrap(~f)
-    
-  }
-  
-  return(p)
-  
-  
-}
-
-
-##------------------------------------------------------------------------------
-# Boxplot plot - need to fix the color thing
-##------------------------------------------------------------------------------
-tglow.plot.cor <- function(dataset, x, y, color = NULL, assay = "cells_norm", facet = NULL, n.dots = NULL, log.x = NULL, log.y = NULL){
-  
-  # Find x and y 
-  
-  if(x %in% colnames(dataset$meta)){
-    
-    x.data <- dataset[["meta"]][dataset[[assay]]$Image_ImageNumber_Global, x]
-    
-  } else if (x %in% colnames(dataset$cells_norm)){
-    
-    x.data <- dataset[[assay]][, x]
-    
-  }
-  
-  if(y %in% colnames(dataset$meta)){
-    
-    y.data <- dataset[["meta"]][dataset[[assay]]$Image_ImageNumber_Global, y]
-    
-  } else if (y %in% colnames(dataset$cells_norm)){
-    
-    y.data <- dataset[[assay]][, y]
-    
-  }
-  
-  # Create plotting dataframe
-  df <- data.frame(x = x.data,
-                   y = y.data)
-  
-  # Add color variable if necessary
-  if(!is.null(color)){
-    
-    if(color %in% colnames(dataset$meta)){
-      
-      df$c <- dataset[["meta"]][dataset[[assay]]$Image_ImageNumber_Global, color]
-      
-    } else if (color %in% colnames(dataset$cells_norm)){
-      
-      df$c <- dataset[[assay]][, color]
-      
-    }
-    
-    
-  }
-  
-  # Add facet variable if necessary
-  if(!is.null(facet)){
-    
-    df$f <- dataset[["meta"]][dataset[[assay]]$Image_ImageNumber_Global, facet]
-    
-  }
-  
-  # Build base plot (with or without colored dots)
-  if(!is.null(color)){
-    
-    p <- ggplot(df) +
-      geom_point(aes(x, y, color = c), size = 0.5) +
-      theme_bw() +
-      theme(panel.grid = element_blank()) +
-      scale_color_viridis_d()
-    
-  } else{ 
-    
-    p <- ggplot(df) +
-      geom_point(aes(x, y)) +
-      theme_bw() +
-      theme(panel.grid = element_blank())
-    
-  }
-  
-  # Log axis
-  if(!is.null(log.x)){
-    
-    p <- p + scale_x_log10()
-    
-  }
-  
-  if(!is.null(log.y)){
-    
-    p <- p + scale_x_log10()
-    
-  }
-  
-  # Add facet
-  if(!is.null(facet)){
-    
-    p <- p + facet_wrap(~f)
-    
-  }
-  
-  # Add axis labels
-  p <- p +
-        labs(x = x,
-             y = y)
-  
-  return(p)
-  
-  
-}
