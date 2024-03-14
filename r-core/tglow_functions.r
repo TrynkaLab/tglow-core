@@ -115,7 +115,10 @@ tglow.run.assoc <- function(dataset, predictor, assay="cells_norm", method="lm",
   
 }
 
-
+#-------------------------------------------------------------------------------
+#' Test feature association with meta data element correcting for another feature
+#' 
+#' 
 tglow.run.assoc.twosteps <- function(dataset, predictor, to.correct, assay="cells_norm", method="lm", features=NULL) {
   
   if(!assay %in% names(dataset)) {
@@ -134,48 +137,32 @@ tglow.run.assoc.twosteps <- function(dataset, predictor, to.correct, assay="cell
   if (method == "lm") {
     
     #Find x if it's in cells, agg or in meta
-    
     if (predictor %in% colnames(dataset$meta) & assay == "cells_norm") {
-        x <- dataset$meta[dataset[["cells"]]$Image_ImageNumber_Global, predictor]
-
-        } else if (predictor %in% colnames(dataset$meta) & assay == "agg"){ # Julie added this so we can do it on the aggregated data as well
-          x <- dataset$meta[rownames(dataset$agg), predictor]
-          } else if (predictor %in% colnames(cur.cells)) {
-
-            x <- cur.cells[,predictor]
-    
-            } else {
-              stop("Not a valid response")
-            }
+      x <- dataset$meta[dataset[["cells"]]$Image_ImageNumber_Global, predictor]
+    } else if (predictor %in% colnames(dataset$meta) & assay == "agg"){ # Julie added this so we can do it on the aggregated data as well
+        x <- dataset$meta[rownames(dataset$agg), predictor]
+    } else if (predictor %in% colnames(cur.cells)) {
+      x <- cur.cells[,predictor]
+    } else {
+      stop("Not a valid response")
+    }
     
     # Make a dataframe to store the results
     df <- data.frame(x = x)
     
-    #Find variable to correct for if it's in cells, agg or in meta
-      
+    # Find variable to correct for if it's in cells, agg or in meta
     if (to.correct %in% colnames(dataset$meta) & assay == "cells_norm") {
-        
-      z <- dataset$meta[dataset[["cells"]]$Image_ImageNumber_Global, to.correct]
-      
-      } else if (to.correct %in% colnames(dataset$meta) & assay == "agg"){ # Julie added this so we can do it on the aggregated data as well
-        
-        z <- dataset$meta[rownames(dataset$agg), to.correct]
-      
-        } else if (to.correct %in% colnames(cur.cells)) {
-        
-          z <- cur.cells[,to.correct]
-        
-            } else {
-        
-                stop("Not a valid response")
-                #cat("[ERROR] Not a valid response\n")
-                #return(NULL)
-      
-                }
+      z <- dataset$meta[dataset[["cells"]]$Image_ImageNumber_Global, to.correct] 
+    } else if (to.correct %in% colnames(dataset$meta) & assay == "agg"){ # Julie added this so we can do it on the aggregated data as well
+      z <- dataset$meta[rownames(dataset$agg), to.correct]
+    } else if (to.correct %in% colnames(cur.cells)) {
+      z <- cur.cells[,to.correct]
+    } else {
+      stop("Not a valid response")
+    }
       
     df$z <- z
 
-    
     ## TODO: use custom more efficient LM 
     i <- 0
     j <- ncol(cur.cells)
@@ -207,29 +194,26 @@ tglow.run.assoc.twosteps <- function(dataset, predictor, to.correct, assay="cell
                                                        dendf = f[3],
                                                        p.value = p,
                                                        feature = colnames(cur.cells)[y]) 
-      
       residuals[, y] <- residuals(l1)
-      
     }
-    
   }
   
-    res <- bind_rows(res.list)
-  
-    cats <- dataset$features[dataset$features$analyze, ]$category
-    names(cats) <- rownames(dataset$features[dataset$features$analyze, ])
-  
-    mes <- dataset$features[dataset$features$analyze, ]$measurement
-    names(mes) <- rownames(dataset$features[dataset$features$analyze, ])
-  
-    obj <- dataset$features[dataset$features$analyze, ]$object
-    names(obj) <- rownames(dataset$features[dataset$features$analyze, ])
-  
-    res$category <- cats[res$feature]
-    res$measurement <- mes[res$feature]
-    res$object <- obj[res$feature]
-    res$channel <- str_extract(res$feature, pattern = paste0(c("mito", "actin", "cd25_ki67", "dna"), collapse = "|"))
-    res$channel <- ifelse(is.na(res$channel), "AreaShape", res$channel)
+  res <- bind_rows(res.list)
+
+  cats <- dataset$features[dataset$features$analyze, ]$category
+  names(cats) <- rownames(dataset$features[dataset$features$analyze, ])
+
+  mes <- dataset$features[dataset$features$analyze, ]$measurement
+  names(mes) <- rownames(dataset$features[dataset$features$analyze, ])
+
+  obj <- dataset$features[dataset$features$analyze, ]$object
+  names(obj) <- rownames(dataset$features[dataset$features$analyze, ])
+
+  res$category <- cats[res$feature]
+  res$measurement <- mes[res$feature]
+  res$object <- obj[res$feature]
+  res$channel <- str_extract(res$feature, pattern = paste0(c("mito", "actin", "cd25_ki67", "dna"), collapse = "|"))
+  res$channel <- ifelse(is.na(res$channel), "AreaShape", res$channel)
 
   return(list(res, residuals))  
 }
