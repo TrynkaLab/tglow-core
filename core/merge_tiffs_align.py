@@ -14,6 +14,7 @@ import pystackreg
 import pickle
 import copy
 import xml.etree.ElementTree as ET
+import warnings
 
 #-------------------------------------------------------------------
 # Static functions
@@ -418,6 +419,22 @@ class MergeAndAlign:
                     max_merged = np.array(max_projection)
                     tifffile.imwrite(cur_out, max_merged, shape=max_merged.shape, imagej=True, metadata={'spacing': 0.149, 'unit': 'um','axes': 'CYX'})
 
+    # Read PE index file for Phenix or Operetta
+    def read_index_file(self, plate):
+        
+        cur = None
+        # Phenix and operetta call their metadata files differently
+        if (os.path.isFile(f"{self.input}/{plate}/Index.xml")) {
+            cur = get_channel_channel_info(f"{self.input}/{plate}/Index.xml")
+        } else if (os.path.isFile(f"{self.input}/{plate}/Index.idx.xml")) {
+            cur = get_channel_channel_info(f"{self.input}/{plate}/Index.idx.xml")
+        } else {
+            Warning("[WARN] index xml file not found")
+        }
+        
+        return(cur)
+
+
     # Perform registration between planes
     def calculate_registration(self, index, index_merge, well):
             
@@ -472,29 +489,37 @@ class MergeAndAlign:
             
         return alignment_matrices
 
+    # Write a json file with the channel id's in the merged tiffs
     def write_updated_channel_indices(self, channel_index_new):
         
         channel_info = {}
         for plate in self.plates:
-            cur = get_channel_channel_info(f"{self.input}/{plate}/Index.xml")
-            for key in cur.keys():
-                cur[key]['cycle']=1
-                cur[key]['plate']=plate
-            channel_info = {**channel_info, **cur}
+            cur = self.read_index_file(plate)
+            
+            if (cur != None):
+                for key in cur.keys():
+                    cur[key]['cycle']=1
+                    cur[key]['plate']=plate
+                channel_info = {**channel_info, **cur}
+            else:
+                Warning(f"[WARN] Index file for plate {plate} not found. Skipping writing index")
+                return None
 
         if not channel_index_new is None:
-            
             i=2
             for plate in self.plates_merge:
-                cur = get_channel_channel_info(f"{self.input}/{plate}/Index.xml")
-                for key in cur.keys():
-                    cur[key]['cycle']=i
-                    cur[key]['plate']=plate
-                    cur[key]['id_old'] = cur[key]['id']
-                    cur[key]['id'] = channel_index_new[plate][int(key)]
-                    channel_info[channel_index_new[plate][int(key)]] = cur[key]
-                i+=1
-                
+                cur = self.read_index_file(plate)
+                if (cur != None):
+                    for key in cur.keys():
+                        cur[key]['cycle']=i
+                        cur[key]['plate']=plate
+                        cur[key]['id_old'] = cur[key]['id']
+                        cur[key]['id'] = channel_index_new[plate][int(key)]
+                        channel_info[channel_index_new[plate][int(key)]] = cur[key]
+                    i+=1
+                else:
+                    Warning(f"[WARN] Index file for merge plate {plate} not found. Skipping writing index")
+                    return None 
                    
         # Convert ids to string for JSON compatability
         channel_info = {str(k):v for k,v in channel_info.items()}           
@@ -511,6 +536,7 @@ class MergeAndAlign:
     # Returns a dict structure for the items in a well and plate 
     # {plate}/{well}/{field}/{channel}/[plane]
     # plane is ordered by plane number
+    # TODO: do this based on the PE index xml, should be pretty easy and a cleaner solution
     def build_plate_index(self, well, plates, channels):
         index = {}
         i=0
