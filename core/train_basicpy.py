@@ -130,7 +130,7 @@ def train_basicpy(input_dir_raw, output_prefix, output_dir, channel, nimg=100, t
                     if (len(cur_files) >= 1):
                         training_files.append(cur_files)
                     
-    print("[INFO] Found " + str(len(training_files)) + " training files")
+    print(f"[INFO] Found {str(len(training_files))} training files")
     
     training_imgs = []
     i=0
@@ -140,7 +140,7 @@ def train_basicpy(input_dir_raw, output_prefix, output_dir, channel, nimg=100, t
         # Select subset of images
         merge_files = random.sample(training_files, nimg)
         
-        print("[INFO] Reading files")
+        print(f"[INFO] Reading {len(merge_files)} randomly selected files")
         #print(merge_files)
         # Loop over the raw tiffs and read them as 2d numpy arrays
         j = 0
@@ -154,11 +154,14 @@ def train_basicpy(input_dir_raw, output_prefix, output_dir, channel, nimg=100, t
             print("[INFO] Merging " + str(nimg) + " random images for training")
             training_imgs.append(np.max(np.array(training_imgs_tmp), axis=0))
         else:
-            training_imgs.append(training_imgs_tmp)
+            # This gave issues as it puts an array of arrays, giving the wrong shape
+            #training_imgs.append(training_imgs_tmp)
+            training_imgs=training_imgs_tmp
             
     # Convert into 3d numpy array
     merged_orig = np.array(training_imgs)
-    
+    print(f"[INFO] Read training files into array of shape {str(merged_orig.shape)}")
+
     if blur:
         print("[INFO] Applying gaussian blur to images prior to fitting model")
         merged = ndi.gaussian_filter(merged_orig, sigma=(0, blur_sigma, blur_sigma))
