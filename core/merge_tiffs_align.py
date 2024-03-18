@@ -424,13 +424,13 @@ class MergeAndAlign:
         
         cur = None
         # Phenix and operetta call their metadata files differently
-        if (os.path.isFile(f"{self.input}/{plate}/Index.xml")) {
+        if (os.path.isFile(f"{self.input}/{plate}/Index.xml")):
             cur = get_channel_channel_info(f"{self.input}/{plate}/Index.xml")
-        } else if (os.path.isFile(f"{self.input}/{plate}/Index.idx.xml")) {
+        elif (os.path.isFile(f"{self.input}/{plate}/Index.idx.xml")):
             cur = get_channel_channel_info(f"{self.input}/{plate}/Index.idx.xml")
-        } else {
+        else:
             Warning("[WARN] index xml file not found")
-        }
+        
         
         return(cur)
 
