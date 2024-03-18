@@ -77,7 +77,7 @@ def main(params):
       # submit a job per well to copy in parallel as much as possible
       os.system(f'bsub -G teamtrynka -J {plate_name}_well{k} -q imaging -n 1 -M 50M -R "select[mem>50M] rusage[mem=50M]" -o "{logs}/copy_raw-%J.log" -e "{logs}/copy_raw-%J.log" rsync -arvh --files-from="{fofn}" "{images_folder}" "{os.path.join(params.output_path,plate_name,k)}"')
       # Sleep for 4 seconds in between jobs not to overload the lustre
-      time.sleep(4)
+      time.sleep(2)
       
     print("[+] Writing update Index.xml")
     idx = os.path.join(params.output_path,plate_name,"Index.xml")
