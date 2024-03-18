@@ -13,6 +13,7 @@ conda activate /software/teamtrynka/conda/basicpy
 
 output=$1
 channel=$2
+plate=$3
 
 # Setup variables
 PIPELINE_DIR="/software/teamtrynka/tglow-core"
@@ -26,3 +27,4 @@ python ${PIPELINE_DIR}/core/train_basicpy.py \
 --channel ${channel} \
 --nimg 200 \
 --merge_n 100
+#--plate ${plate}
