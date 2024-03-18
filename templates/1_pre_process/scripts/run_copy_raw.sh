@@ -16,7 +16,7 @@ source /software/hgi/installs/anaconda3/etc/profile.d/conda.sh
 conda deactivate
 
 # Activate conda env
-conda activate /software/teamtrynka/basicpy
+conda activate /software/teamtrynka/conda/basicpy
 
 # Setup variables
 PIPELINE_DIR="/software/teamtrynka/tglow-core"
@@ -27,6 +27,7 @@ while read plate;
 do
 echo "[INFO] ${file}"
 
+# For Operetta exports use Index.idx.xml here insteaf
 python ${PIPELINE_DIR}/core/copy_raw.py \
 --input_file="/nfs/t217_imaging/HarmonyExports/${plate}/Images/Index.xml" \
 --output_path="${OUT_DIR}"

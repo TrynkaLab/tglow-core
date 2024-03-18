@@ -430,8 +430,7 @@ class MergeAndAlign:
             cur = get_channel_channel_info(f"{self.input}/{plate}/Index.idx.xml")
         else:
             Warning("[WARN] index xml file not found")
-        
-        
+         
         return(cur)
 
 
@@ -626,8 +625,6 @@ if __name__ == "__main__":
     
     runner.run(args.well)
 
-    
-    
     #main(well, input, output, ref_channel, qry_channel, write_zstack, write_max_projection, basicpy_models, uint32)
 
 

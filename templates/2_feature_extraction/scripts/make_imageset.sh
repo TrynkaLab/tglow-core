@@ -27,7 +27,7 @@ source /software/hgi/installs/anaconda3/etc/profile.d/conda.sh
 conda deactivate
 
 # Activate conda env
-conda activate /software/teamtrynka/basicpy
+conda activate /software/teamtrynka/conda/basicpy
 
 while read file;
 do
