@@ -1,10 +1,12 @@
 
 
 # Load the core tglow functions
-for (file in list.files(paste0("/software/teamtrynka/tglow-core/", "r-core"), full.names=T)) {
+tglow.core <- c(list.files(paste0("/software/teamtrynka/tglow-core/", "r-core"), full.names=T),
+list.files(paste0("/software/teamtrynka/installs/tglow-core/", "r-core"), full.names=T))
+
+for (file in tglow.core) {
   source(file)
 }
-
 
 # Global parameters
 suffix     <- "v1"
