@@ -56,10 +56,10 @@ tglow.filter.features.calc <- function(dataset, filter.table, assay="cells", fea
 #' Tglow dataset with updated analyze column
 tglow.filter.features.apply <- function(dataset, res) {
   
-  if (class(res) == "data.frame" | class(res) == "matrix") {
+  if (class(res)[1] == "data.frame" | class(res)[1] == "matrix") {
     selector <- rowSums(res)!=ncol(res)
     names(selector) <- rownames(res)
-  } else if (class(res) == "logical") {
+  } else if (class(res)[1] == "logical") {
     selector <- res
   } else {
     stop("Not a valid res input type")
@@ -151,9 +151,9 @@ tglow.filter.cells.calc <- function(dataset, filter.table, assay="cells", featur
 #' A tglow dataset with the cells, image and object relation matrix filtered
 tglow.filter.cells.apply <- function(dataset, res) {
   
-  if (class(res) == "data.frame" | class(res) == "matrix") {
+  if (class(res)[1] == "data.frame" | class(res)[1] == "matrix") {
     selector <- rowSums(res)==ncol(res)
-  } else if (class(res) == "logical") {
+  } else if (class(res)[1] == "logical") {
     selector <- res
   } else {
     cat("[ERROR] no valid res input type\n")

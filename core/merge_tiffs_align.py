@@ -268,6 +268,7 @@ class MergeAndAlign:
             self.flatfields={}
             for val in args.basicpy_model:
                 keypair = val.split("=")
+                print(f"[INFO] {keypair}")
                 #basicpy_models[keypair[0]] = load_model(keypair[1])
                 self.flatfields[keypair[0]] = BaSiC.load_model(keypair[1])
                 self.flatfields[keypair[0]].baseline="" # Hack arround missing baseline       
