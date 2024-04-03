@@ -483,7 +483,7 @@ tglow.plot.boxplot <- function(dataset, x, y, color = NULL, assay.y = "cells", a
   
   # Add facet variable if necessary
   if(!is.null(facet)){
-    df$f <- dataset[["meta"]][, f]
+    df$f <- dataset[["meta"]][dataset[[assay.y]]$Image_ImageNumber_Global, facet]
   }
   
   # Build base plot
