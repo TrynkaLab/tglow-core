@@ -1,4 +1,6 @@
 #!/bin/bash
+# Usage
+# submit-run.sh <run script.sh> <number of jobs in batch file>
 
 # If something fails, exit
 set -e
