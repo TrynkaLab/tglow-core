@@ -15,7 +15,7 @@ OUT_DIR="${PROJECT_DIR}/2_feature_extraction/output/<OUTPUT>"
 ARRAY_FILE="${PROJECT_DIR}/2_feature_extraction/scripts/batch_files/<BATCH FILE>"
 
 # Software variables 
-PIPELINE_DIR="/software/teamtrynka/tglow-core"
+PIPELINE_DIR="/software/teamtrynka/installs/tglow-core"
 PIPELINE="${PIPELINE_DIR}/cellprofiler/${PROJECT}/<.CPPIPE>"
 
 # Path with raw images
@@ -24,7 +24,7 @@ IMG_RAW="${PROJECT_DIR}/1_pre_process/output/raw"
 #------------------------------------------------------------------------------------
 # Software settings
 MERGER="${PIPELINE_DIR}/core/merge_tiffs_align.py"
-CP_PLUGINS="/software/teamtrynka/cellprofiler/plugins"
+CP_PLUGINS="/software/teamtrynka/installs/cellprofiler/plugins"
 set _JAVA_OPTIONS=-Xmx7g
 
 #------------------------------------------------------------------------------------
@@ -98,13 +98,14 @@ if [ -f  "${OUT_DIR}/.done" ]; then
 fi
 
 # Configure bash to work with conda
-source /software/hgi/installs/anaconda3/etc/profile.d/conda.sh
+#source /software/hgi/installs/anaconda3/etc/profile.d/conda.sh
+source /software/hgi/installs/conda-audited/miniconda/etc/profile.d/conda.sh
 
 # Important so the correct python version is loaded
 conda deactivate
 
 # Activate conda env
-conda activate /software/teamtrynka/conda/basicpy
+conda activate /software/teamtrynka/installs/basicpy
 
 # Check if input exists
 if [ -d "${IMG_RAW}/${PLATE}/${WELL}" ]; then
@@ -152,7 +153,7 @@ echo "[INFO] -------------------------------------------------------------"
 conda deactivate
 
 # Activate conda env
-conda activate /software/teamtrynka/cellprofiler
+conda activate /software/teamtrynka/installs/cellprofiler
 
 # Run cell profiler
 CMD="cellprofiler \

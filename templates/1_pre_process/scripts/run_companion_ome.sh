@@ -4,17 +4,18 @@
 # batch file should be a list of plate names, one per line
 
 # Configure bash to work with conda
-source /software/hgi/installs/anaconda3/etc/profile.d/conda.sh
+#source /software/hgi/installs/anaconda3/etc/profile.d/conda.sh
+source /software/hgi/installs/conda-audited/miniconda/etc/profile.d/conda.sh
 
 # Important so the correct python version is loaded
 conda deactivate
 
 # Activate conda env
-conda activate /software/teamtrynka/cellprofiler
+conda activate /software/teamtrynka/installs/cellprofiler
 
-PIPELINE_DIR="/software/teamtrynka/tglow-core"
-BATCH="batch_files/ki67_test_plates.files"
-INPUT_DIR="/lustre/scratch125/humgen/projects/cell_activation_tc/projects/KI67_TEST/1_pre_process/output/stitched"
+PIPELINE_DIR="/software/teamtrynka/installs/tglow-core"
+BATCH="batch_files/<batch>.files"
+INPUT_DIR="../output/stitched"
 
 while read batch;
 do

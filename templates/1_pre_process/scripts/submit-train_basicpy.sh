@@ -13,7 +13,7 @@ JS_TIME="12:00"
 # Make a dir for the logs if it does not exist
 mkdir -p logs
 
-OUTPUT=/lustre/scratch125/humgen/projects/cell_activation_tc/projects/KITTY/1_pre_process/output/basicpy_models_all_plates
+OUTPUT=../output/basicpy_models_all_plates
 
 PLATES=(\
 "<plate_name_1>" \

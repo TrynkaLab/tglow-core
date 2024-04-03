@@ -16,18 +16,19 @@ PROJECT_DIR="/lustre/scratch125/humgen/projects/cell_activation_tc/projects/${PR
 IMG_RAW="${PROJECT_DIR}/1_pre_process/output/raw"
 
 # Setup variables
-PIPELINE_DIR="/software/teamtrynka/tglow-core"
+PIPELINE_DIR="/software/teamtrynka/installs/tglow-core"
 MERGER="${PIPELINE_DIR}/core/merge_tiffs_align.py"
 
 #--------------------------------------------------------------------------------------
 # Configure bash to work with conda
-source /software/hgi/installs/anaconda3/etc/profile.d/conda.sh
+#source /software/hgi/installs/anaconda3/etc/profile.d/conda.sh
+source /software/hgi/installs/conda-audited/miniconda/etc/profile.d/conda.sh
 
 # Important so the correct python version is loaded
 conda deactivate
 
 # Activate conda env
-conda activate /software/teamtrynka/conda/basicpy
+conda activate /software/teamtrynka/installs/basicpy
 
 while read file;
 do

@@ -3,13 +3,13 @@
 # run_omero_upload.sh <RENDER_MANIFEST> <UPLOAD_MANIFEST>
 
 # Configure bash to work with conda
-source /software/hgi/installs/anaconda3/etc/profile.d/conda.sh
+software/hgi/installs/anaconda3/etc/profile.d/conda.sh
 
 # Important so the correct python version is loaded
 conda deactivate
 
 # Activate conda env
-conda activate /software/teamtrynka/conda/omero/
+conda activate /software/teamtrynka/installs/omero/
 
 RENDER_MANIFEST=$1
 UPLOAD_MANIFEST=$2 
@@ -61,7 +61,7 @@ echo -e "    color: \"$(echo $line | awk 'BEGIN{FS=","}{print $26}')\"" >> $file
 
 done < $RENDER_MANIFEST
 
-cd /software/teamtrynka/conda/omero/src
+cd /software/teamtrynka/installs/omero/src
 python client.py --manifest $UPLOAD_MANIFEST
 
 #python client.py \
