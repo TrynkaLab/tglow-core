@@ -18,6 +18,7 @@ import logging
 import argparse
 from xml.etree import ElementTree as ET
 
+# Setup logging
 logging.basicConfig(format='%(asctime)s %(message)s')
 log = logging.getLogger(__name__)
 log.setLevel(logging.DEBUG)
@@ -26,10 +27,10 @@ class PerkinElmerParser(object):
     """Parse PerkinElmer Index XML into a easy to access dictionary"""
     def __init__(self, index_path):
         self.index_file = index_path
-        log.debug(f"[+] Reading Index file: {index_path}")
+        log.info(f"[+] Reading Index file: {index_path}")
         self.xml = ET.parse(index_path)
         self.NS = {"PE": re.findall(r'^{(.*)}',self.xml.getroot().tag)[0]}
-        log.debug(f"[+] Using namespace '{self.NS}'")
+        log.info(f"[+] Using namespace '{self.NS}'")
         self.parse_plate()
         self.parse_images()
         self.parse_wells()
@@ -38,7 +39,7 @@ class PerkinElmerParser(object):
         
     def parse_channels(self):
         """Get PE channels"""
-        log.debug(f"[+] Reading Channels metadata")
+        log.info(f"[+] Reading Channels metadata")
         self.channels = []
         for e in self.xml.findall("./PE:Maps/PE:Map/PE:Entry", self.NS):
             cn = e.findall('./PE:ChannelName',self.NS)
@@ -65,20 +66,20 @@ class PerkinElmerParser(object):
                 # ff_selector = f"./PE:Maps/PE:Map/PE:Entry[@ChannelID='{channel['id']}']/PE:FlatfieldProfile"
                 # channel["flatfield"] = self.xml.find(ff_selector,self.NS).text
                 self.channels.append(channel)
-                log.debug(f" ├ {channel['id']} = {channel['name']}")
-        log.debug(f" └ Channel count = {len(self.channels)}")
+                log.info(f" ├ {channel['id']} = {channel['name']}")
+        log.info(f" └ Channel count = {len(self.channels)}")
 
 
     def parse_planes(self):
         """Get PE planes as a sorted list"""
-        log.debug(f"[+] Reading PlaneIDs from Images")
+        log.info(f"[+] Reading PlaneIDs from Images")
         all_planes = self.xml.findall("./PE:Images/PE:Image/PE:PlaneID", self.NS)
         self.planes = sorted(list(set([p.text for p in all_planes])))
-        log.debug(f" └ Found planes: {self.planes}")
+        log.info(f" └ Found planes: {self.planes}")
 
     def parse_images(self):
         """Get all PE images"""
-        log.debug(f"[+] Reading images metadata")
+        log.info(f"[+] Reading images metadata")
         self.images={}
         for image in self.xml.findall("./PE:Images/PE:Image", self.NS):
             i = {
@@ -106,11 +107,11 @@ class PerkinElmerParser(object):
                 "z_abs": {"unit":z_abs.attrib["Unit"], "value":float(z_abs.text)}
             }
             self.images[i['id']] = i
-        log.debug(f" └ Images: {len(self.images)}")
+        log.info(f" └ Images: {len(self.images)}")
     
     def parse_plate(self):
         """Get all PE Plate"""
-        log.debug(f"[+] Reading Plate metadata")
+        log.info(f"[+] Reading Plate metadata")
         plate = self.xml.find("./PE:Plates/PE:Plate", self.NS)
         self.plate = {
                 "id": plate.find("./PE:PlateID", self.NS).text,
@@ -121,16 +122,16 @@ class PerkinElmerParser(object):
                 "rows": int(plate.find("./PE:PlateRows",self.NS).text),
                 "cols": int(plate.find("./PE:PlateColumns",self.NS).text)
         }
-        log.debug(f" ├ ID   = '{self.plate['id']}'")
-        log.debug(f" ├ Type = '{self.plate['type']}'")
-        log.debug(f" ├ Time = {self.plate['time']}")
-        log.debug(f" ├ Rows = {self.plate['rows']}")
-        log.debug(f" └ Cols = {self.plate['cols']}")
+        log.info(f" ├ ID   = '{self.plate['id']}'")
+        log.info(f" ├ Type = '{self.plate['type']}'")
+        log.info(f" ├ Time = {self.plate['time']}")
+        log.info(f" ├ Rows = {self.plate['rows']}")
+        log.info(f" └ Cols = {self.plate['cols']}")
         
 
     def parse_wells(self):
         """Get all PE Wells"""
-        log.debug(f"[+] Reading Wells metadata")
+        log.info(f"[+] Reading Wells metadata")
         self.wells = []
         for well in self.xml.findall("./PE:Wells/PE:Well", self.NS):
             w = {
@@ -140,13 +141,13 @@ class PerkinElmerParser(object):
                 "images": [self.images[wi.attrib["id"]] for wi in well.findall("./PE:Image",self.NS)]
             }
             self.wells.append(w)
-        log.debug(f" └ Wells: {len(self.wells)}")
+        log.info(f" └ Wells: {len(self.wells)}")
 
     def save(self, output_path):
         if not os.path.exists(output_path):
             os.makedirs(output_path, exist_ok=True)
         out_json = os.path.join(output_path,f"{self.plate['name']}.json")
-        log.debug(f"[+] Saving JSON to : {out_json}")
+        log.info(f"[+] Saving JSON to : {out_json}")
         d = {
                 "index": self.index_file,
                 "plate": self.plate,

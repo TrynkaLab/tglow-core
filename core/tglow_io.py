@@ -1,19 +1,22 @@
 import sys
-
-# TODO: this is a hack
-sys.path.append('/software/teamtrynka/installs/tglow-core/core')
-
 import numpy as np
 import tifffile
 import collections
 import re
 import os
 import glob
+import logging
+
+from aicsimageio import AICSImage
+from aicsimageio.writers import OmeTiffWriter
 
 from parse_xml import PerkinElmerParser
 from tglow_utils import build_well_index, default_to_regular
-from aicsimageio import AICSImage
-from aicsimageio.writers import OmeTiffWriter
+
+# Logging
+logging.basicConfig(format='%(asctime)s %(message)s')
+log = logging.getLogger(__name__)
+log.setLevel(logging.DEBUG)
 
 # Informal interface for plate
 #class plateIo:
@@ -104,7 +107,15 @@ class ImageQuery:
         return (int(ImageQuery.ROW_TO_ID[row]), col)
         
     def to_string(self):
-        return f"r{self.row}c{self.c}f{self.field}ch{self.channel}p{self.plane}"
+        
+        if (self.channel is None and self.plane is None):
+            return f"r{self.row}c{self.col}f{self.field}"
+        elif (self.channel is None and self.plane is not None):
+            return f"r{self.row}c{self.col}f{self.field}p{self.plane}"
+        elif (self.channel is not None and self.plane is None):
+            return f"r{self.row}c{self.col}f{self.field}ch{self.channel}"
+        else:
+            return f"r{self.row}c{self.col}f{self.field}ch{self.channel}p{self.plane}"
 
     
 class IndexedImageReader:
@@ -121,16 +132,16 @@ class IndexedImageReader:
         if resolution is not None:
             self.resolution = resolution
         
-        print(f"[INFO] Inititalized reader with")
-        print(f"[INFO] plate: {self.plate_order}")
-        print(f"[INFO] rows: {self.row_order}")
-        print(f"[INFO] cols: {self.col_order}")
-        print(f"[INFO] fields: {self.field_order}")
+        log.info(f"Inititalized reader with")
+        log.info(f"plate: {self.plate_order}")
+        log.info(f"rows: {self.row_order}")
+        log.info(f"cols: {self.col_order}")
+        log.info(f"fields: {self.field_order}")
         
-        print(f"[INFO] C: {self.channel_order}")
-        print(f"[INFO] Z: {self.plane_order}")
+        log.info(f"C: {self.channel_order}")
+        log.info(f"Z: {self.plane_order}")
 
-        print(f"[INFO] estimated resolution in ZYX: {self.resolution}")
+        log.info(f"estimated resolution in ZYX: {self.resolution}")
 
     def __peak_metadata__(self):
         """Get the resolution for the first image in the index, assume this is the same for the rest of the files"""
@@ -178,7 +189,7 @@ class IndexedImageReader:
         else:
             channels = [query.channel]
         
-        #print(f"[INFO] Identified {len(channels)} channels")        
+        #log.info(f"Identified {len(channels)} channels")        
         
         planes=[]
         if (query.plane is None):
@@ -186,7 +197,7 @@ class IndexedImageReader:
         else:
             planes = [query.plane]
             
-        #print(f"[INFO] Identified {len(planes)} planes")        
+        #log.info(f"Identified {len(planes)} planes")        
 
         # Init empty 4d numpy array
         stack = np.empty(shape=(len(channels),
@@ -199,7 +210,7 @@ class IndexedImageReader:
             for plane in range(len(planes)):
                 stack[channel][plane] = tifffile.imread(self.index[query.plate][query.row][query.col][query.field][channels[channel]][planes[plane]])
         
-        print(f"[INFO] read stack of {stack.shape}")        
+        log.info(f"read stack of {stack.shape}")        
         
         return stack
     
@@ -258,7 +269,11 @@ class AICSImageReader():
                 index[str(plate)][str(row)][str(col)][str(field)] = fov[field]
                 
         self.index = default_to_regular(index)
-        
+    
+    def get_img(self, query):
+        img = AICSImage(f"{self.path}/{query.plate}/{ImageQuery.ID_TO_ROW[query.row]}/{query.col}/{query.field}.ome.tiff")
+        return img
+    
     def read_image(self, query) -> np.ndarray:
         """Get a single image"""
         if not isinstance(query, ImageQuery):
@@ -299,7 +314,7 @@ class AICSImageWriter():
     def __init__(self, path) -> None:
         self.path = path
     
-    def write_stack(self, stack, query):
+    def write_stack(self, stack, query, channel_names=None, physical_pixel_sizes=None):
         """Write a CZYX array into the folder structure"""
 
         if not isinstance(query, ImageQuery):
@@ -319,54 +334,6 @@ class AICSImageWriter():
         OmeTiffWriter.save(stack,
          f"{outdir}/{query.field}.ome.tiff",
           dim_order="CZYX",
-          image_names=query.to_string()
+          channel_names=channel_names,
+          physical_pixel_sizes=physical_pixel_sizes,
           )
-
-    
-# Some text code             
-index_xml="/lustre/scratch125/humgen/projects/cell_activation_tc/projects/KI67_TEST/1_pre_process/output/raw/3012024_mo13_TGlow_ki67Test_10minperm/Index.xml"
-prefix="/lustre/scratch125/humgen/projects/cell_activation_tc/projects/KI67_TEST/1_pre_process/output/raw/3012024_mo13_TGlow_ki67Test_10minperm/"
-
-
-# Init reader writers
-test_output = "/software/teamtrynka/installs/tglow-core/test_output"
-ac_writer = AICSImageWriter(test_output)
-ac_reader = AICSImageReader(test_output)
-pe_reader = PerkinElmerRawReader(index_xml, prefix)
-
-# Read raw data in
-q = ImageQuery('3012024_mo13_TGlow_ki67Test_10minperm', 4, 4, 1)
-stack = pe_reader.read_stack(q)
-
-# Write the stack in ome tiff
-ac_writer.write_stack(stack, q)
-
-q = ImageQuery('3012024_mo13_TGlow_ki67Test_10minperm', 7, 3, 1)
-stack = pe_reader.read_stack(q)
-ac_writer.write_stack(stack, q)
-
-# Read the stack back in
-stack_read = ac_reader.read_stack(q)
-
-stack.shape
-stack_read.shape
-
-# Read a specitic plane
-q = ImageQuery('3012024_mo13_TGlow_ki67Test_10minperm', 6, 5, 1, None, 4)
-stack = pe_reader.read_stack(q)
-
-ac_writer.write_stack(stack, q)
-stack_read = ac_reader.read_stack(q)
-
-stack.shape
-stack_read.shape
-
-# Read a specitic channel
-q = ImageQuery('3012024_mo13_TGlow_ki67Test_10minperm', 4, 4, 1, 3, None)
-stack = pe_reader.read_stack(q)
-
-ac_writer.write_stack(stack, q)
-stack_read = ac_reader.read_stack(q)
-
-stack.shape
-stack_read.shape

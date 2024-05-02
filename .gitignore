@@ -4,3 +4,5 @@ tglow/cellprofiler/.DS_Store
 tglow/cellprofiler/.DS_Store
 tglow/cellprofiler/.DS_Store
 **/testing/**
+**/tglow_core.egg-info/**
+**/__pycache__/**
