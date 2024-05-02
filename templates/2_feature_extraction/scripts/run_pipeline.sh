@@ -105,7 +105,7 @@ source /software/hgi/installs/conda-audited/miniconda/etc/profile.d/conda.sh
 conda deactivate
 
 # Activate conda env
-conda activate /software/teamtrynka/installs/basicpy
+conda activate /software/teamtrynka/installs/tglow
 
 # Check if input exists
 if [ -d "${IMG_RAW}/${PLATE}/${WELL}" ]; then

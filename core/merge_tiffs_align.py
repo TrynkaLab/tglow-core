@@ -7,78 +7,29 @@ import json
 import numpy as np
 from basicpy import BaSiC
 from pathlib import Path
-from skimage import transform, io, exposure, color
+from skimage import transform, io, exposure, color, util, filters, measure
 from matplotlib import pyplot as plt
 from pystackreg import StackReg
 import pystackreg
 import pickle
 import copy
-import xml.etree.ElementTree as ET
 import warnings
+import csv
+import xml.etree.ElementTree as ET
 
 #-------------------------------------------------------------------
 # Static functions
 #-------------------------------------------------------------------
 
-# Get channel info easliy queriable in python as json format
-# adapted from Matin Prete's ParseXML.py
-def get_channel_channel_info(index_xml):
-    tree = ET.parse(index_xml)
-    root = tree.getroot()
-
-    default_namespace = re.findall(r'^{(.*)}',root.tag)[0]
-    NS = {
-        "PE": default_namespace,
-        "OME": "http://www.openmicroscopy.org/Schemas/OME/2016-06"
-    }
-
-    entries=root.findall("PE:Maps/PE:Map/PE:Entry", NS)
-
-    # Adapted & extended from Martins script
-    channel_info={}
-    for e in entries:
-        cn = e.findall('./PE:ChannelName',NS)
-        
-        if cn:
-            channel = {
-                "id": e.attrib['ChannelID'],
-                "name": cn[0].text,
-                "image_type": e.find('./PE:ImageType',NS).text,
-                "acquisition_type": e.find('./PE:AcquisitionType',NS).text,
-                "illumination_type": e.find('./PE:IlluminationType',NS).text,
-                "channel_type": e.find('./PE:ChannelType',NS).text,
-                "binning_x": int(e.find('./PE:BinningX',NS).text),
-                "binning_y": int(e.find('./PE:BinningY',NS).text),
-                "emmisson": int(e.find('./PE:MainEmissionWavelength',NS).text),
-                "excitation": int(e.find('./PE:MainExcitationWavelength',NS).text),
-                "max_intensity": int(e.find('./PE:MaxIntensity',NS).text),
-                "numerical_apeture": float(e.find('./PE:ObjectiveNA',NS).text),
-                "objective_magnification": float(e.find('./PE:ObjectiveMagnification',NS).text),
-                "exposure_time":{"unit": e.find('./PE:ExposureTime',NS).attrib['Unit'],
-                                "value": float(e.find('./PE:ExposureTime',NS).text)},
-                "size": (
-                    int(e.find('./PE:ImageSizeX',NS).text),
-                    int(e.find('./PE:ImageSizeY',NS).text)
-                )}
-            x = e.find('./PE:ImageResolutionX',NS)
-            y = e.find('./PE:ImageResolutionY',NS)
-            channel["image_resolution"]: {
-                "x": {"unit":x.attrib["Unit"], "value":float(x.text),},
-                "y": {"unit":y.attrib["Unit"], "value":float(y.text),},
-            }
-            # more info inside :
-            ff_selector = f"./PE:Maps/PE:Map/PE:Entry[@ChannelID='{channel['id']}']/PE:FlatfieldProfile"
-            channel["flatfield"] = root.find(ff_selector,NS).text
-            channel_info[channel['id']] = channel
-            
-    return channel_info
-        
 # Plot before and after of an imageset for a given index in the arrays
 def plot_imgs(before, after, filename):
+    
+    #print(f"[DEBUG] b:{before.dtype} a: {after.dtype}")
+    
     fig, axes = plt.subplots(1, 2, figsize=(6, 3))
-    im = axes[0].imshow(before, cmap='gray', vmin=0, vmax=1)
+    im = axes[0].imshow((before * 255).astype(np.uint8), cmap='gray', vmin=0, vmax=1)
     axes[0].set_title("Before registration")
-    im = axes[1].imshow(after, cmap='gray', vmin=0, vmax=1)
+    im = axes[1].imshow((after * 255).astype(np.uint8), cmap='gray', vmin=0, vmax=1)
     axes[1].set_title("After registration")
     
     fig.tight_layout()
@@ -134,8 +85,72 @@ def make_prefix(well, idx, prepend_zero=True):
     else:
         return None
 
+# Encode numpy formats as JSON
+class NpEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, np.integer):
+            return int(obj)
+        if isinstance(obj, np.floating):
+            return float(obj)
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return super(NpEncoder, self).default(obj)
+
+# Get channel info easliy queriable in python as json format
+# adapted from Matin Prete's ParseXML.py
+def get_channel_channel_info(index_xml) -> dict:
+    tree = ET.parse(index_xml)
+    root = tree.getroot()
+
+    default_namespace = re.findall(r'^{(.*)}',root.tag)[0]
+    NS = {
+        "PE": default_namespace,
+        "OME": "http://www.openmicroscopy.org/Schemas/OME/2016-06"
+    }
+
+    entries=root.findall("PE:Maps/PE:Map/PE:Entry", NS)
+
+    # Adapted & extended from Martins script
+    channel_info={}
+    for e in entries:
+        cn = e.findall('./PE:ChannelName',NS)
+        
+        if cn:
+            channel = {
+                "id": e.attrib['ChannelID'],
+                "name": cn[0].text,
+                "image_type": e.find('./PE:ImageType',NS).text,
+                "acquisition_type": e.find('./PE:AcquisitionType',NS).text,
+                "illumination_type": e.find('./PE:IlluminationType',NS).text,
+                "channel_type": e.find('./PE:ChannelType',NS).text,
+                "binning_x": int(e.find('./PE:BinningX',NS).text),
+                "binning_y": int(e.find('./PE:BinningY',NS).text),
+                "emmisson": int(e.find('./PE:MainEmissionWavelength',NS).text),
+                "excitation": int(e.find('./PE:MainExcitationWavelength',NS).text),
+                "max_intensity": int(e.find('./PE:MaxIntensity',NS).text),
+                "numerical_apeture": float(e.find('./PE:ObjectiveNA',NS).text),
+                "objective_magnification": float(e.find('./PE:ObjectiveMagnification',NS).text),
+                "exposure_time":{"unit": e.find('./PE:ExposureTime',NS).attrib['Unit'],
+                                "value": float(e.find('./PE:ExposureTime',NS).text)},
+                "size": (
+                    int(e.find('./PE:ImageSizeX',NS).text),
+                    int(e.find('./PE:ImageSizeY',NS).text)
+                )}
+            x = e.find('./PE:ImageResolutionX',NS)
+            y = e.find('./PE:ImageResolutionY',NS)
+            channel["image_resolution"]: {
+                "x": {"unit":x.attrib["Unit"], "value":float(x.text),},
+                "y": {"unit":y.attrib["Unit"], "value":float(y.text),},
+            }
+            # more info inside :
+            ff_selector = f"./PE:Maps/PE:Map/PE:Entry[@ChannelID='{channel['id']}']/PE:FlatfieldProfile"
+            channel["flatfield"] = root.find(ff_selector,NS).text
+            channel_info[channel['id']] = channel
+            
+    return channel_info
+
 # Convert a numpy 32bit float to a 16 bit int, clip values to zero and 65535
-def float_to_16bit_unint(matrix):
+def float_to_16bit_unint(matrix) -> np.array:
 
     # Convert to 16 bit to keep consistency with output
     # Round to nearest int            
@@ -152,7 +167,7 @@ def float_to_16bit_unint(matrix):
     return matrix
 
 # Convert a numpy 32bit float to a 16 bit int, clip values to 
-def float_to_32bit_unint(matrix):
+def float_to_32bit_unint(matrix) -> np.array:
 
     # Round to nearest int            
     matrix = np.rint(matrix)
@@ -166,6 +181,7 @@ def float_to_32bit_unint(matrix):
     matrix = matrix.astype(np.uint32)
     
     return matrix
+
 
 # Read an array of tiff files as a 3d numpy array
 # Optionally transform them using a precomputed alignment matrix
@@ -193,17 +209,6 @@ def read_tiffstack_as_numpy(cur_files, alignment=None):
 
 
 #-------------------------------------------------------------------
-# Encode numpy formats as JSON
-class NpEncoder(json.JSONEncoder):
-    def default(self, obj):
-        if isinstance(obj, np.integer):
-            return int(obj)
-        if isinstance(obj, np.floating):
-            return float(obj)
-        if isinstance(obj, np.ndarray):
-            return obj.tolist()
-        return super(NpEncoder, self).default(obj)
-
 # Main runner
 class MergeAndAlign:
     
@@ -235,17 +240,27 @@ class MergeAndAlign:
                 raise RuntimeError("Need to supply reference and query channels for registration")
             
             self.ref_channel=int(args.ref_channel[0])
+            
+            if not args.ref_channel_eval is None:
+                self.ref_channel_eval = int(args.ref_channel_eval[0])
+            
             #self.qry_channel=int(args.qry_channel[0])
             self.qry_channel={}
+            self.qry_channel_eval={}
             i=0
             for cur_plate in self.plates_merge:
                 self.qry_channel[cur_plate] = int(args.qry_channel[i])
+                
+                if not args.qry_channel_eval is None:
+                    self.qry_channel_eval[cur_plate] = int(args.qry_channel_eval[i])
                 i+=1
             
         else:
             self.ref_channel=None
             self.qry_channel=None
-        
+            self.ref_channel_eval=None
+            self.qry_channel_eval=None
+
         # Fields, planes, channels
         self.fields=args.fields
         self.planes=args.planes
@@ -271,7 +286,16 @@ class MergeAndAlign:
                 print(f"[INFO] {keypair}")
                 #basicpy_models[keypair[0]] = load_model(keypair[1])
                 self.flatfields[keypair[0]] = BaSiC.load_model(keypair[1])
-                self.flatfields[keypair[0]].baseline="" # Hack arround missing baseline       
+                self.flatfields[keypair[0]].baseline="" # Hack arround missing baseline    
+                
+        self.eq_merge=args.eq_merge   
+        self.inv_merge=args.inv_merge   
+        self.eval_merge=args.eval_merge
+        
+        if self.eval_merge:
+            if (args.ref_channel_eval is None) | (args.qry_channel_eval is None):
+                raise RuntimeError("Need to supply reference and query evaluation channels for registration evaluation")
+            
 
     # Main loop
     def run(self, well):
@@ -354,6 +378,11 @@ class MergeAndAlign:
             
         print("[INFO] Writing channel info")
         self.write_updated_channel_indices(channel_index_new)
+
+        if (not (self.write_max_projection | self.write_zstack)):
+            print("[INFO] No output specified, exiting")
+            return
+
 
         print("[INFO] Staring merging")
         
@@ -452,12 +481,21 @@ class MergeAndAlign:
         if len(index_merge[self.plates_merge[0]]) != len(index[plate]):
             raise RuntimeError("Different number of fields for qry and ref plate")
         
+        if self.eval_merge:
+            outfile = f"{reg_dir}/{well}_registration_eval_pearson_correlations.tsv"
+            file = open(outfile, "w")
+            file.write("image\tref_plate\tqry_plate\tref_ch_eval\tqry_ch_eval\tref_ch\tqry_ch\tr_before\tp_before\tr_after\tt_after\n")
+            file.close()
+            
         print("[INFO] Running alignment between plates on max projections")
         i=0; 
+        
         for field in self.fields:
             field = MergeAndAlign.FIELD_PREFIX + str(field).zfill(2)
             
             ref_mp = np.max(read_tiffstack_as_numpy(index[plate][well][field][self.ref_channel]), axis=0)   
+            
+            
             
             # Loop over plates to merge onto ref
             for plate_merge in self.plates_merge:
@@ -468,9 +506,37 @@ class MergeAndAlign:
                 
                 qry_mp = np.max(read_tiffstack_as_numpy(index_merge[plate_merge][well][field][self.qry_channel[plate_merge]]), axis=0)
                 
+                # Run histogram matching between query and reference
+                if self.eq_merge:
+                    qry_mp = exposure.match_histograms(qry_mp, ref_mp)
+                    qry_mp = float_to_16bit_unint(qry_mp)
+                    
+                # Invert the images priror to registration
+                if self.inv_merge:
+                    
+                    #print(f"[INFO] q:{qry_mp.dtype} r:{ref_mp.dtype}")
+                    #qry_mp = np.iinfo(qry_mp.dtype).max - qry_mp
+                    #ref_mp_final = np.iinfo(ref_mp.dtype).max - qry_mp
+                    ref_mp_final = exposure.rescale_intensity(ref_mp)
+                    qry_mp = exposure.rescale_intensity(qry_mp, in_range=(ref_mp.min(), ref_mp.max()))
+                    
+                    qry_mp = util.invert(qry_mp)
+                    ref_mp_final = util.invert(ref_mp_final)
+                    
+                    thresh = filters.threshold_otsu(ref_mp_final)
+                    print(f"[INFO] Post inversion otsu thresholds {thresh}")
+                    ref_mp_final[ref_mp_final < thresh] = 0
+                    qry_mp[qry_mp < thresh] = 0
+                    #ref_mp_final[ref_mp_final > thresh[1] & ref_mp_final < thresh[2]] = 0
+                    #qry_mp[qry_mp > thresh[1] & qry_mp < thresh[2]] = 0
+                    #print(f"[INFO] q:{qry_mp.dtype} r:{ref_mp.dtype}")
+
+                else:
+                    ref_mp_final = ref_mp
+               
                 # Calculate the offsets
                 sr = StackReg(self.transform)
-                align_mat = sr.register(ref_mp, qry_mp)
+                align_mat = sr.register(ref_mp_final, qry_mp)
                                 
                 # Save the offsets
                 alignment_matrices[plate_merge][field] = align_mat
@@ -479,10 +545,29 @@ class MergeAndAlign:
                 if self.plot:
                     # Apply the offesets
                     qry_mp_reg = sr.transform(qry_mp, tmat=align_mat)
-                    before_reg = composite_images([ref_mp, qry_mp])
-                    after_reg = composite_images([ref_mp, qry_mp_reg])
+                    before_reg = composite_images([ref_mp_final, qry_mp])
+                    after_reg = composite_images([ref_mp_final, qry_mp_reg])
                     plot_imgs(before_reg, after_reg, filename=f"{reg_dir}/{plate_merge}_{well}_{field}_refch{self.ref_channel}_qrych{self.qry_channel[plate_merge]}.png")
-                                
+                
+                if self.eval_merge:
+                    print(f"[INFO] Calculation pearson correlation between ref and qry for channels {self.ref_channel_eval} and {self.qry_channel_eval[plate_merge]}")
+                    a = np.max(read_tiffstack_as_numpy(index[plate][well][field][self.ref_channel_eval]), axis=0)   
+                    b = np.max(read_tiffstack_as_numpy(index_merge[plate_merge][well][field][self.qry_channel_eval[plate_merge]], alignment=align_mat), axis=0)   
+                    c = np.max(read_tiffstack_as_numpy(index_merge[plate_merge][well][field][self.qry_channel_eval[plate_merge]]), axis=0)   
+
+                    
+                    apcc, apval = measure.pearson_corr_coeff(a, c)
+                    print(f"[INFO] Before Pearson R: {apcc:0.3g}, p-val: {apval:0.3g}")
+    
+                    bpcc, bpval = measure.pearson_corr_coeff(a, b)
+                    print(f"[INFO] After Pearson R {bpcc:0.3g}, p-val: {bpval:0.3g}")
+                    
+                    line=f"{well}_{field}\t{plate}\t{plate_merge}\t{self.ref_channel_eval}\t{self.qry_channel_eval[plate_merge]}\t{self.ref_channel}\t{self.qry_channel[plate_merge]}\t{apcc}\t{apval}\t{bpcc}\t{bpval}\n"
+                    file = open(outfile, 'a')
+                    file.write(line)
+                    file.close()
+                    
+                    
         if self.save_reg:
             alignment_matrices['transform'] = transform
             pickle.dump(alignment_matrices, open(f"{reg_dir}/registration_{well}.pickle", "wb")) 
@@ -585,7 +670,11 @@ class MergeAndAlign:
         print(f"Merge plates:\t{str(self.plates_merge)}")     
         print(f"Merge channels:\t{str(self.channels_merge)}")  
         print(f"Ref channel:\t{str(self.ref_channel)}")  
-        print(f"Qry channel:\t{str(self.qry_channel)}")  
+        print(f"Qry channel:\t{str(self.qry_channel)}")
+        print(f"Ref channel eval:\t{str(self.ref_channel_eval)}")  
+        print(f"Qry channel eval:\t{str(self.qry_channel_eval)}")  
+        print(f"Merge hist match:\t{str(self.eq_merge)}")  
+        print(f"Merge invert:\t{str(self.inv_merge)}")  
         print(f"Transform:\t{str(self.transform)}")        
         print(f"Save registr:\t{str(self.save_reg)}")     
         print(f"Plot:\t\t{str(self.plot)}")     
@@ -610,7 +699,11 @@ if __name__ == "__main__":
     parser.add_argument('--channels_merge', help='Channels to for merging from second plate. <channel #1> | [<channel #1> <channel #2> <channel #n>]', nargs='+', default=None)
     parser.add_argument('--basicpy_model', help='Basicpy model dir for a channel. If merging channels ids are assigned seqeuntially for extra channels <channel #1>=/path/to/model | [<channel #1>=/path/to/model <channel #n>=/path/to/model]', nargs='+', default=None)
     parser.add_argument('--uint32', help="Write as 32 bit unsigned integer instead of clipping to 16 bit uint after applying basicpy model", action='store_true', default=False)
-
+    parser.add_argument('--eq_merge', help="Run histogram matching prior to registration.", action='store_true', default=False)
+    parser.add_argument('--inv_merge', help="Invert image prior to registration", action='store_true', default=False)
+    parser.add_argument('--eval_merge', help="Calculate correlation between two channels before and after", action='store_true', default=False)
+    parser.add_argument('--ref_channel_eval', help='Reference channel for registration evaluation (nucleus)', nargs=1, default=None)
+    parser.add_argument('--qry_channel_eval', help='Query channel for registration evaluation (nucleus)', nargs=1, default=None)
     args = parser.parse_args()
   
     print("-----------------------------------------------------------")

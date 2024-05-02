@@ -244,16 +244,26 @@ tglow.get.feature.meta.from.cells <- function(feature.names) {
 tglow.merge.filesets <- function(data) {
   out <- list()
   
-  out$cells <- dplyr::bind_rows(lapply(data, function(x){x[["cells"]]}),)
-  out$meta  <- dplyr::bind_rows(lapply(data, function(x){x[["meta"]]}),)
-  out$orl   <- dplyr::bind_rows(lapply(data, function(x){x[["orl"]]}),)
+  ncol.cells <- as.numeric(lapply(data, function(x){ncol(x[["cells"]])}))
+  ncol.meta  <- as.numeric(lapply(data, function(x){ncol(x[["meta"]])}))
+  ncol.orl   <- as.numeric(lapply(data, function(x){ncol(x[["orl"]])}))
+
+  selector <- (ncol.cells == as.numeric(names(which.max(table(ncol.cells))))) & (ncol.meta == as.numeric(names(which.max(table(ncol.meta))))) & (ncol.orl  == as.numeric(names(which.max(table(ncol.orl)))))
+  
+  if (sum(selector) != length(selector)) {
+    warning(paste0("Not all filesets have the same collumn number, dropping the ones with least frequent number. Retained ", sum(selector), "/", length(selector), " filesets."))
+  }
+  
+  out$cells <- dplyr::bind_rows(lapply(data[selector], function(x){x[["cells"]]}),)
+  out$meta  <- dplyr::bind_rows(lapply(data[selector], function(x){x[["meta"]]}),)
+  out$orl   <- dplyr::bind_rows(lapply(data[selector], function(x){x[["orl"]]}),)
   
   if ( "features" %in% names(data[[1]])) {
-    out$features <-  dplyr::bind_rows(lapply(data, function(x){x[["features"]]}))
+    out$features <-  dplyr::bind_rows(lapply(data[selector], function(x){x[["features"]]}))
   }
   
   if ( "cells_norm" %in% names(data[[1]])) {
-    out$cells_norm <-  dplyr::bind_rows(lapply(data, function(x){x[["cells_norm"]]}))
+    out$cells_norm <-  dplyr::bind_rows(lapply(data[selector], function(x){x[["cells_norm"]]}))
   }
   
   #out$cells <- do.call(rbind, lapply(data, function(x){x[["cells"]][,feature.names]}))
@@ -348,7 +358,7 @@ tglow.grouped.scale <- function(data, grouping, features=NULL, method="mod.z"){
 #' @param method method to use for normalizing, z | mod zcore
 #' 
 #' @returns tglow dataset with normalized assay
-tglow.normalize <- function(dataset, method="mod.z", features=NULL, assay.out="cells_norm") {
+tglow.normalize <- function(dataset, method="mod.z", features=NULL, assay.out="cells_norm", filter=TRUE) {
   
   # Normalize and filter features
   ft <- dataset$cells
@@ -380,19 +390,26 @@ tglow.normalize <- function(dataset, method="mod.z", features=NULL, assay.out="c
   }
   cat("\n")
   
-  # Remove non properly normalized features and those with zero variance
-  cat("[INFO] Checking for NA's\n")
-  ft <- ft[,colSums(is.na(ft)) == 0]
-  cat("[INFO] Checking for zero variances\n")
-  ft <- ft[,Rfast::colVars(ft) != 0]
-  #ft <- ft[,colVars(as.matrix(ft))!=0]
-  
-  if (ncol(ft) != length(features)) {
-    warning(paste0("Removed ", length(features)-ncol(ft), " features with zero variance after normalizing"))
+  if(filter==TRUE){
+
+     # Remove non properly normalized features and those with zero variance
+    cat("[INFO] Checking for NA's\n")
+    ft <- ft[,colSums(is.na(ft)) == 0]
+    cat("[INFO] Checking for zero variances\n")
+    ft <- ft[,Rfast::colVars(ft) != 0]
+    #ft <- ft[,colVars(as.matrix(ft))!=0]
+    
+    if (ncol(ft) != length(features)) {
+      warning(paste0("Removed ", length(features)-ncol(ft), " features with zero variance after normalizing"))
+    }
+
   }
   
+  # Transform to dataframe add back Image_ImageNumber_Global
+  ft <- as.data.frame(ft)
+  ft$Image_ImageNumber_Global <- dataset$cells$Image_ImageNumber_Global
+
   dataset[[assay.out]] <- ft
-  
   
   return(dataset)
 }
@@ -437,12 +454,17 @@ tglow.pca.outliers <- function(dataset, grouping=NULL, pc.thresh=0.5, pc.max=500
       cat("[INFO] Calculating PC's for ", group, "\n")
       cur.data <- data[grouping==group, features]
       
+      if (sum(grouping==group) < 2) {
+        warning("Need at least two cells in group, skipping")
+        next
+      }
       
       #if (method == "mod.z") {
       #  cur.data <- apply(cur.data, 2, tglow.mod.zscore)
      # } else if (method == "z") {
         cur.data <- apply(cur.data, 2, scale, center=T, scale=T)
       #}
+      
       
       cur.data <- cur.data[,colSums(is.na(cur.data)) == 0]
       cur.data <- cur.data[,colVars(as.matrix(cur.data))!=0]

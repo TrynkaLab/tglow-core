@@ -397,7 +397,7 @@ tglow.plot.cor <- function(dataset, x, y, color = NULL, assay = "cells_norm", fa
   if(!is.null(log.y)){p <- p + scale_x_log10()}
   
   # Add facet
-  if(!is.null(facet)){p <- p + facet_wrap(~f)}
+  if(!is.null(facet)){p <- p + facet_wrap(~f, scales = "free")}
   
   # Add axis labels
   p <- p + labs(x = x,
@@ -431,18 +431,24 @@ tglow.plot.violin <- function(dataset, x, y, color = NULL, assay.y = "cells_norm
   
   # Add facet variable if necessary
   if(!is.null(facet)){
-    df$f <- dataset[["meta"]][, f]
+    df$f <- dataset[["meta"]][dataset[[assay.y]]$Image_ImageNumber_Global, facet]
   }
   
   # Build base plot
   p <- ggplot(df) +
-    geom_violin(aes(x, y, fill = c), width = 1.5, size = 1, draw_quantiles = c(0.25, 0.5, 0.75), scale = "area") +
+    geom_violin(aes(x, y), fill = "grey") +
     theme_bw() +
     theme(panel.grid = element_blank()) +
     labs(y = y) +
     scale_fill_viridis_d() +
-    labs(x = "") +
-    theme(legend.position = "none")
+    labs(x = "")
+
+  # Add color
+  if(!is.null(color)){
+
+    p <- p + geom_violin(aes(x, y, fill = c), color = "black")
+
+  }
   
   # Add points
   if(!is.null(n.dots)){
@@ -455,7 +461,7 @@ tglow.plot.violin <- function(dataset, x, y, color = NULL, assay.y = "cells_norm
   
   # Add facet
   if(!is.null(facet)){
-    p <- p + facet_wrap(~f) 
+    p <- p + facet_wrap(~f, scales = "free") 
   }
   
   return(p)

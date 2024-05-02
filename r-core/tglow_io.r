@@ -7,7 +7,7 @@ FILESET_ID=0
 #' Matches images based on <plate>, <well>, <field>
 #' 
 #' @param path path to tglow output dir
-tglow.read.dir <- function(path, exp.suffix="_experiment.tsv", n=NULL, ...) {
+tglow.read.dir <- function(path, exp.suffix="_experiment.tsv", n=NULL, verbose=F, ...) {
   
   #f.cells <- list.files(path, recursive = T, pattern="*_cells.tsv")
   #f.exp   <- list.files(path, recursive = T, pattern="*_experiment.tsv")
@@ -36,6 +36,9 @@ tglow.read.dir <- function(path, exp.suffix="_experiment.tsv", n=NULL, ...) {
     #cur <- tglow.read.fileset(pre, return.feature.meta=F, pat.img = "_images.tsv")
     filesets[[pre]] <- cur
     
+    if (verbose){
+        cat("\n[DEBUG] cols:", ncol(cur$cells), " cols meta", ncol(cur$meta), " cols orl:", ncol(cur$orl), "\n")
+    }
     #if(length(output) == 0) {
     #  output <- cur 
     #} else {
@@ -49,6 +52,10 @@ tglow.read.dir <- function(path, exp.suffix="_experiment.tsv", n=NULL, ...) {
   # Read feature index
   #cat("[INFO] Reading features\n")
   #cells    <- fread(paste0(pre[1],"_cells.tsv"), data.table=F, nrows=2)
+  
+  if(verbose) {
+    cat("[DEBUG] colnames:\n", colnames(output$cells))
+  }
   
   features      <- tglow.get.feature.meta.from.cells(colnames(output$cells))
   classes       <- sapply(output$cells, class)

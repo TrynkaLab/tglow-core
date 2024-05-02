@@ -17,7 +17,7 @@ source /software/hgi/installs/conda-audited/miniconda/etc/profile.d/conda.sh
 conda deactivate
 
 # Activate conda env
-conda activate /software/teamtrynka/installs/basicpy
+conda activate /software/teamtrynka/installs/tglow
 
 # Setup variables
 PIPELINE_DIR="/software/teamtrynka/installs/tglow-core"

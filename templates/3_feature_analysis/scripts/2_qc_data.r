@@ -10,6 +10,7 @@ library(matrixStats)
 library(irlba)
 library(magick)
 library(Rfast)
+library(ggrastr)
 
 # ------------------------------------------------------------------------------
 # Image level QC
@@ -41,7 +42,7 @@ pc2            <- 2
 
 # Determine qc grouping
 cur.meta          <- output$meta[rownames(tmp),]
-cur.meta$qc_group <- paste0(output$meta$Metadata_plate, "_",output$meta$tritonX_conc, "_KI67:", output$meta$ki67_ab, "_CD25:", output$meta$cd25_ab)
+cur.meta$qc_group <- paste0(output$meta$Metadata_plate, <QC GROUP HERE>)
 
 for (plate in unique(cur.meta[,"qc_group"])) {
   cur <- cur.meta[,"qc_group"] == plate
@@ -121,7 +122,7 @@ um     <- uwot::umap(pcs$x)
 save(pcs, um,file=paste0("../output/",prefix,"simple_qced_data_cache_umap_",suffix,".RData"))
 
 # Filter for modified z-score
-output$meta$qc_group <- paste0(output$meta$Metadata_plate, "_",output$meta$tritonX_conc, "_KI67:", output$meta$ki67_ab, "_CD25:", output$meta$cd25_ab)
+output$meta$qc_group <- paste0(output$meta$Metadata_plate, "_", <QC GROUP HERE>)
 
 grouping             <- output$meta[output$cells$Image_ImageNumber_Global, "qc_group"]
 
@@ -131,12 +132,7 @@ outlier.featureset   <- c("cell_AreaShape_Eccentricity",
                         "cell_AreaShape_MajorAxisLength",
                         "cell_AreaShape_MinorAxisLength",
                         "cell_AreaShape_Compactness",
-                        "cell_AreaShape_Extent",
-                        "cell_Intensity_MaxIntensity_actin",
-                        "nucl_Intensity_MaxIntensity_dna",
-                        "cell_Intensity_MaxIntensity_cd25",
-                        "nucl_Intensity_MaxIntensity_ki67",
-                        "cell_Intensity_MaxIntensity_mito")
+                        "cell_AreaShape_Extent")
 
 outlier.featureset <- c(outlier.featureset, grep("cell_AreaShape_Zernike", output$features$id, value=T))
 outlier.featureset <- c(outlier.featureset, grep("nucl_AreaShape_Zernike", output$features$id, value=T))
@@ -158,11 +154,9 @@ filtered.cells.z <- !test$outliers & !fixed.outliers
 fcols <- list()
 fcols[["outlier"]]         <- !filtered.cells.z
 fcols[["population"]]      <- output$meta[output$cells$Image_ImageNumber_Global, "population"]
-fcols[["Ki67 antibody"]]   <- output$meta[output$cells$Image_ImageNumber_Global, "ki67_ab"]
-fcols[["CD25 antibody"]]   <- output$meta[output$cells$Image_ImageNumber_Global, "cd25_ab"]
-fcols[["triton x"]]        <- output$meta[output$cells$Image_ImageNumber_Global, "tritonX_conc"]
-fcols[["Permibilization"]] <- output$meta[output$cells$Image_ImageNumber_Global, "plate"]
-fcols[["fixation"]]        <- output$meta[output$cells$Image_ImageNumber_Global, "GA_fixation"]
+fcols[["plate"]]           <- output$meta[output$cells$Image_ImageNumber_Global, "plate"]
+# <MORE VARIABLES HERE>
+
 
 pdf(width=6, height=5, file=paste0("../output/plots/",prefix,"all_cells_umaps_categorical_",suffix,".pdf"))
 
@@ -174,18 +168,15 @@ for (fcol in names(fcols)) {
                 ylab="umap 2",
                 col=fcols[[fcol]],
                 raster=T,
-                alpha=0.25) + scale_color_viridis_c(name=fcol)
-  theme.plain(p1)
+                alpha=0.25) + scale_color_viridis_d(name=fcol)
+  plot(heme.plain(p1))
 }
 
 dev.off()
 
 fcols <- list()
 fcols[["Log2 major axis"]]        <- log2(output$cells$cell_AreaShape_MajorAxisLength)
-fcols[["Log2 mean ki67"]]         <- log2(output$cells$nucl_Intensity_MeanIntensity_ki67)
-fcols[["Log2 mean cd25"]]         <- log2(output$cells$cell_Intensity_MeanIntensity_cd25)
-fcols[["Mito texture entropy 4"]] <- output$cells$cell_Texture_Entropy_mito_4_03_3
-fcols[["Ki67 texture entropy 4"]] <- output$cells$nucl_Texture_Entropy_ki67_4_03_32
+# <MORE VARIABLES HERE>
 
 pdf(width=6, height=5, file=paste0("../output/plots/",prefix,"all_cells_umaps_numeric_",suffix,".pdf"))
 for (fcol in names(fcols)) {
@@ -197,7 +188,7 @@ for (fcol in names(fcols)) {
                 col=fcols[[fcol]],
                 raster=T,
                 alpha=0.25) + scale_color_viridis_c(name=fcol)
-  theme.plain(p1)
+  plot(theme.plain(p1))
 }
 dev.off()
 
@@ -207,26 +198,3 @@ nrow(output$cells) - sum(filtered.cells.z)
 
 output.f <- tglow.filter.cells.apply(output, filtered.cells.z)
 save(output.f, file=paste0("../output/",prefix,"qced_data_cache_",suffix,".RData"))
-
-# ------------------------------------------------------------------------------
-# Evaluate QC outliers
-# ------------------------------------------------------------------------------
-img.index <- tglow.build.img.index(paste0("../../2_feature_extraction/output/",prefix, suffix),
-                                   pattern.group = "ki67_test_2d_v1_composite_segmented_(.*)\\.png",
-                                   pattern.filter=NULL,
-                                   pattern.file=".*_composite_segmented_.*.png")
-
-
-good.cells <- output.f$cells$cell_ObjectNumber_Global
-bad.cells  <- output$cells$cell_ObjectNumber_Global[!output$cells$cell_ObjectNumber_Global %in% good.cells]
-
-cell.sample.good <- sample(which(output$cells$cell_ObjectNumber_Global %in% good.cells), size=20)
-cell.sample.bad  <- sample(which(output$cells$cell_ObjectNumber_Global %in% bad.cells), size=20)
-cells            <- c(cell.sample.bad,cell.sample.good)
-
-imgs <- tglow.read.imgs(output, cells, img.index)
-meta <- c(rep("bad", length(cell.sample.bad)), rep("good", length(cell.sample.good)))
-
-tglow.plot.img.set(imgs, ncol=10, main.sub=meta, main="QC outliers per group", marker.size=3, byrow=T)
-
-
