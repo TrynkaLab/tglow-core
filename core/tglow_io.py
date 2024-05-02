@@ -40,7 +40,8 @@ log.setLevel(logging.DEBUG)
 #        pass
 
 class ImageQuery:
-    
+    """Bean that stores data relevant for fetching and saving multiwell images"""
+
     ROW_TO_ID=build_well_index(invert=False, rows_as_string=True)
     ID_TO_ROW=build_well_index(invert=True, rows_as_string=True)
 
@@ -116,6 +117,18 @@ class ImageQuery:
             return f"r{self.row}c{self.col}f{self.field}ch{self.channel}"
         else:
             return f"r{self.row}c{self.col}f{self.field}ch{self.channel}p{self.plane}"
+
+
+class NamedImageQuery(ImageQuery):
+    """Image query with an index that convers string names to indices"""
+    
+    def __init__(self, index, plate, row, col, field, channel=None, plane=None):
+        super().__init__(index["plate"][plate],
+                         index["row"][row],
+                         index["col"][col],
+                         index["field"][field],
+                         index["channel"][channel],
+                         index["plane"][plane])
 
     
 class IndexedImageReader:
@@ -237,7 +250,7 @@ class PerkinElmerRawReader(IndexedImageReader):
         index = nested_dict()
         
         for file in self.pe_index.images.values():
-            index[plate][str(file['row'])][str(file['col'])][str(file['field'])][str(file['channel'])][str(file['plane'])] = self.path + file['file']
+            index[plate][str(file['row'])][str(file['col'])][str(file['field'])][str(file['channel'])][str(file['plane'])] = f"{self.path}/{file['file']}"
             
         return default_to_regular(index)
 
@@ -311,8 +324,11 @@ class AICSImageReader():
 class AICSImageWriter():
     """Writes image data from ome tiffs in a folder structure /plate/row/col/field.ome.tiff where field.ome.tiff is a CZYX array"""
     
-    def __init__(self, path) -> None:
+    def __init__(self, path, channel_names=None, physical_pixel_sizes=None) -> None:
         self.path = path
+        self.channel_names=channel_names
+        self.physical_pixel_sizes=physical_pixel_sizes
+        
     
     def write_stack(self, stack, query, channel_names=None, physical_pixel_sizes=None):
         """Write a CZYX array into the folder structure"""
@@ -330,6 +346,15 @@ class AICSImageWriter():
         
         if not os.path.exists(outdir):
             os.makedirs(outdir)
+        
+        if channel_names is None and self.channel_names is not None:
+            channel_names = self.channel_names
+        
+        if physical_pixel_sizes is None and self.physical_pixel_sizes is not None:
+            physical_pixel_sizes = self.physical_pixel_sizes
+        
+        if query.channel is not None:
+            channel_names = [channel_names[int(query.channel)]]
         
         OmeTiffWriter.save(stack,
          f"{outdir}/{query.field}.ome.tiff",
