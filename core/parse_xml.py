@@ -58,10 +58,11 @@ class PerkinElmerParser(object):
                 }
                 x = e.find('./PE:ImageResolutionX',self.NS)
                 y = e.find('./PE:ImageResolutionY',self.NS)
-                channel["image_resolution"]: {
+                channel["image_resolution"] = {
                     "x": {"unit":x.attrib["Unit"], "value":float(x.text),},
                     "y": {"unit":y.attrib["Unit"], "value":float(y.text),},
                 }
+                                
                 # more info inside :
                 # ff_selector = f"./PE:Maps/PE:Map/PE:Entry[@ChannelID='{channel['id']}']/PE:FlatfieldProfile"
                 # channel["flatfield"] = self.xml.find(ff_selector,self.NS).text

@@ -240,7 +240,9 @@ class PerkinElmerRawReader(IndexedImageReader):
     def __init__(self, index_xml, path, dtype=np.uint16, resolution=None) -> None:        
         self.pe_index=PerkinElmerParser(index_xml)
         self.path = path
-        cur_index = PerkinElmerRawReader.__convert_pe_index__(self)
+        self.pixel_sizes=self.__estimate_pixel_sizes__()
+        log.info(f"Estimated pixels sizes to be {self.pixel_sizes} um (z, y, x)")
+        cur_index = self.__convert_pe_index__()
         super().__init__(index=cur_index, path=path, dtype=dtype, resolution=resolution)
     
 
@@ -254,6 +256,58 @@ class PerkinElmerRawReader(IndexedImageReader):
             
         return default_to_regular(index)
 
+    def __estimate_pixel_sizes__(self):
+        """
+        Extracts the pixel sizes from a PE index xml in (z, y, x) and returns in in microns
+        Returns none if could not be estimated
+        """
+        img0=None
+        img1=None
+
+        for img in self.pe_index.wells[0]["images"]:
+            if img["plane"] == '1':
+                img0=img
+                next
+            if img["plane"] == '2':
+                img1=img
+                break
+
+        zres = abs(img0["position"]["z"]["value"] - img1["position"]["z"]["value"])
+        zunit = img1["position"]["z"]["unit"]
+    
+        # Convert to microns
+        if zunit == "m":
+            zres=zres*1e6
+        else:
+            log.warn(f"Could not estimate z resolution, invalid unit {zunit}")
+            zres=None
+
+        yres = self.pe_index.channels[0]["image_resolution"]["y"]["value"]
+        yunit = self.pe_index.channels[0]["image_resolution"]["y"]["unit"]
+
+        # Convert to microns
+        if yunit == "m":
+            yres=yres*1e6
+        else:
+            log.warn(f"Could not estimate y resolution, invalid unit {yunit}")
+            zres=None
+
+        xres = self.pe_index.channels[0]["image_resolution"]["x"]["value"]
+        xunit = self.pe_index.channels[0]["image_resolution"]["x"]["unit"]
+
+        # Convert to microns
+        if xunit == "m":
+            xres=xres*1e6
+        else:
+            log.warn(f"Could not estimate y resolution, invalid unit {xunit}")
+            xres=None
+
+        if zres is not None and yres is not None and xres is not None:
+            return [zres, yres, xres]
+        else:
+            return None
+                    
+        
 
 class AICSImageReader():
     """Reads image data from ome tiffs in a folder structure /plate/row/col/field.ome.tiff where field.ome.tiff is a CZYX array"""
@@ -330,7 +384,7 @@ class AICSImageWriter():
         self.physical_pixel_sizes=physical_pixel_sizes
         
     
-    def write_stack(self, stack, query, channel_names=None, physical_pixel_sizes=None):
+    def write_stack(self, stack, query, channel_names=None, physical_pixel_sizes=None, image_name=None):
         """Write a CZYX array into the folder structure"""
 
         if not isinstance(query, ImageQuery):
@@ -361,4 +415,5 @@ class AICSImageWriter():
           dim_order="CZYX",
           channel_names=channel_names,
           physical_pixel_sizes=physical_pixel_sizes,
+          image_name=image_name
           )

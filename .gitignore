@@ -6,3 +6,5 @@ tglow/cellprofiler/.DS_Store
 **/testing/**
 **/tglow_core.egg-info/**
 **/__pycache__/**
+**/.nextflow/**
+**/work/**

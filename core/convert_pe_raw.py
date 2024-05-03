@@ -3,6 +3,8 @@ import os
 import logging
 from tglow_io import ImageQuery
 import argparse
+from aicsimageio.types import PhysicalPixelSizes    
+
 
 # Setup logging
 logging.basicConfig(format='%(asctime)s %(message)s')
@@ -34,13 +36,20 @@ def main(input_file, output_path, wells):
             rows.append(row)
             cols.append(col)
             
-
     # Retrieve the channel names to add to the OME metadata
     channel_names = [f"ch{channel['id']} - {channel['name']}" for channel in pe_reader.pe_index.channels]
+    resolution=pe_reader.pixel_sizes
 
-    # Writer class
-    writer = tglow_io.AICSImageWriter(output_path, channel_names=channel_names)
+    if resolution is not None:
+        physical_pixel_sizes=PhysicalPixelSizes(resolution[0], resolution[1], resolution[2])
+    else:
+        physical_pixel_sizes=None
 
+    # AICS writer
+    writer = tglow_io.AICSImageWriter(output_path,
+                                        channel_names=channel_names,
+                                        physical_pixel_sizes=physical_pixel_sizes)
+    
     # Loop over the selected wells
     for row, col in zip(rows, cols):
         
@@ -57,7 +66,9 @@ def main(input_file, output_path, wells):
             
             stack = pe_reader.read_stack(q)
             
-            writer.write_stack(stack, q)
+            img_names=[]
+            
+            writer.write_stack(stack, q, image_name=img_names)
             
             
         
