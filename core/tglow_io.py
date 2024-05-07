@@ -10,8 +10,9 @@ import logging
 from aicsimageio import AICSImage
 from aicsimageio.writers import OmeTiffWriter
 
+from image_query import ImageQuery
 from parse_xml import PerkinElmerParser
-from tglow_utils import build_well_index, default_to_regular
+from tglow_utils import default_to_regular
 
 # Logging
 logging.basicConfig(format='%(asctime)s %(message)s')
@@ -39,85 +40,6 @@ log.setLevel(logging.DEBUG)
 #        """Get an image"""
 #        pass
 
-class ImageQuery:
-    """Bean that stores data relevant for fetching and saving multiwell images"""
-
-    ROW_TO_ID=build_well_index(invert=False, rows_as_string=True)
-    ID_TO_ROW=build_well_index(invert=True, rows_as_string=True)
-
-    def __init__(self, plate, row, col, field, channel=None, plane=None):
-        
-        if type(plate) is str:
-            self.plate = plate
-        else:
-            raise TypeError("Not a valid type for plate")
-        
-        if type(row) is int:
-            self.row = str(row)
-        elif type(row) is str:
-            self.row = row
-        else:
-            raise TypeError("Not a valid type for row")
-            
-        if type(col) is int:
-            self.col = str(col)
-        elif type(col) is str:
-            self.col = col
-        else:
-            raise TypeError("Not a valid type for col")
-        
-        if type(field) is int:
-            self.field = str(field)
-        elif type(field) is str:
-            self.field = field
-        else:
-            raise TypeError("Not a valid type for field")
-        
-        if channel is not None:
-            if type(channel) is int:
-                self.channel = str(channel)
-            elif type(channel) is str:
-                self.channel = channel
-            else:
-                raise TypeError("Not a valid type for channel")
-        else:
-            self.channel=None
-            
-        if plane is not None:
-            if type(plane) is int:
-                self.plane = str(plane)
-            elif type(plane) is str:
-                self.plane = plane
-            else:
-                raise TypeError("Not a valid type for plane")
-        else:
-            self.plane=None
-            
-    def get_well_id(self):
-        return f"{ImageQuery.ID_TO_ROW[self.row]}{self.col.zfill(2)}"
-    
-    def well_id_to_index(well_id) -> tuple:
-        
-        pat = re.compile(r'^([a-z])(\d+)', flags=re.IGNORECASE)
-        match = re.match(pat, well_id)
-        if match:
-            row = match.group(1)
-            col = int(match.group(2))
-        else:
-            raise Exception(f"No match found for {well_id}, does not match ^[a-Z]\d+")
-        return (int(ImageQuery.ROW_TO_ID[row]), col)
-        
-    def to_string(self):
-        
-        if (self.channel is None and self.plane is None):
-            return f"r{self.row}c{self.col}f{self.field}"
-        elif (self.channel is None and self.plane is not None):
-            return f"r{self.row}c{self.col}f{self.field}p{self.plane}"
-        elif (self.channel is not None and self.plane is None):
-            return f"r{self.row}c{self.col}f{self.field}ch{self.channel}"
-        else:
-            return f"r{self.row}c{self.col}f{self.field}ch{self.channel}p{self.plane}"
-
 
 class NamedImageQuery(ImageQuery):
     """Image query with an index that convers string names to indices"""
@@ -130,7 +52,7 @@ class NamedImageQuery(ImageQuery):
                          index["channel"][channel],
                          index["plane"][plane])
 
-    
+
 class IndexedImageReader:
     """Read raw image data from a dictionary of /plate/row/col/field/channel/plane/path_to_file.tiff"""
     
@@ -154,7 +76,8 @@ class IndexedImageReader:
         log.info(f"C: {self.channel_order}")
         log.info(f"Z: {self.plane_order}")
 
-        log.info(f"estimated resolution in ZYX: {self.resolution}")
+        log.info(f"estimated dimensions in ZYX: {self.resolution}")
+        
 
     def __peak_metadata__(self):
         """Get the resolution for the first image in the index, assume this is the same for the rest of the files"""
@@ -240,7 +163,7 @@ class PerkinElmerRawReader(IndexedImageReader):
     def __init__(self, index_xml, path, dtype=np.uint16, resolution=None) -> None:        
         self.pe_index=PerkinElmerParser(index_xml)
         self.path = path
-        self.pixel_sizes=self.__estimate_pixel_sizes__()
+        self.pixel_sizes=self.pe_index.estimate_pixel_sizes()
         log.info(f"Estimated pixels sizes to be {self.pixel_sizes} um (z, y, x)")
         cur_index = self.__convert_pe_index__()
         super().__init__(index=cur_index, path=path, dtype=dtype, resolution=resolution)
@@ -256,58 +179,7 @@ class PerkinElmerRawReader(IndexedImageReader):
             
         return default_to_regular(index)
 
-    def __estimate_pixel_sizes__(self):
-        """
-        Extracts the pixel sizes from a PE index xml in (z, y, x) and returns in in microns
-        Returns none if could not be estimated
-        """
-        img0=None
-        img1=None
 
-        for img in self.pe_index.wells[0]["images"]:
-            if img["plane"] == '1':
-                img0=img
-                next
-            if img["plane"] == '2':
-                img1=img
-                break
-
-        zres = abs(img0["position"]["z"]["value"] - img1["position"]["z"]["value"])
-        zunit = img1["position"]["z"]["unit"]
-    
-        # Convert to microns
-        if zunit == "m":
-            zres=zres*1e6
-        else:
-            log.warn(f"Could not estimate z resolution, invalid unit {zunit}")
-            zres=None
-
-        yres = self.pe_index.channels[0]["image_resolution"]["y"]["value"]
-        yunit = self.pe_index.channels[0]["image_resolution"]["y"]["unit"]
-
-        # Convert to microns
-        if yunit == "m":
-            yres=yres*1e6
-        else:
-            log.warn(f"Could not estimate y resolution, invalid unit {yunit}")
-            zres=None
-
-        xres = self.pe_index.channels[0]["image_resolution"]["x"]["value"]
-        xunit = self.pe_index.channels[0]["image_resolution"]["x"]["unit"]
-
-        # Convert to microns
-        if xunit == "m":
-            xres=xres*1e6
-        else:
-            log.warn(f"Could not estimate y resolution, invalid unit {xunit}")
-            xres=None
-
-        if zres is not None and yres is not None and xres is not None:
-            return [zres, yres, xres]
-        else:
-            return None
-                    
-        
 
 class AICSImageReader():
     """Reads image data from ome tiffs in a folder structure /plate/row/col/field.ome.tiff where field.ome.tiff is a CZYX array"""
@@ -407,9 +279,15 @@ class AICSImageWriter():
         if physical_pixel_sizes is None and self.physical_pixel_sizes is not None:
             physical_pixel_sizes = self.physical_pixel_sizes
         
-        if query.channel is not None:
+        if query.channel is not None and channel_names is not None:
             channel_names = [channel_names[int(query.channel)]]
         
+        log.debug(f"pps: {physical_pixel_sizes}")
+        log.debug(f"cnn: {channel_names}")
+        log.debug(f"imn: {image_name}")
+        log.debug(f"shp: {stack.shape}")
+
+
         OmeTiffWriter.save(stack,
          f"{outdir}/{query.field}.ome.tiff",
           dim_order="CZYX",

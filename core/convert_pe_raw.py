@@ -1,7 +1,7 @@
 import tglow_io
 import os
 import logging
-from tglow_io import ImageQuery
+from image_query import ImageQuery
 import argparse
 from aicsimageio.types import PhysicalPixelSizes    
 
@@ -37,7 +37,10 @@ def main(input_file, output_path, wells):
             cols.append(col)
             
     # Retrieve the channel names to add to the OME metadata
-    channel_names = [f"ch{channel['id']} - {channel['name']}" for channel in pe_reader.pe_index.channels]
+    if pe_reader.pe_index.channels is not None:
+        channel_names = [f"ch{channel['id']} - {channel['name']}" for channel in pe_reader.pe_index.channels]
+    else:
+        channel_names = None
     resolution=pe_reader.pixel_sizes
 
     if resolution is not None:
@@ -65,10 +68,8 @@ def main(input_file, output_path, wells):
             log.info(f"Processing {q.to_string()}")
             
             stack = pe_reader.read_stack(q)
-            
-            img_names=[]
-            
-            writer.write_stack(stack, q, image_name=img_names)
+                        
+            writer.write_stack(stack, q)
             
             
         

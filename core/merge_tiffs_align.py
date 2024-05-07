@@ -136,9 +136,10 @@ def get_channel_channel_info(index_xml) -> dict:
                     int(e.find('./PE:ImageSizeX',NS).text),
                     int(e.find('./PE:ImageSizeY',NS).text)
                 )}
+            
             x = e.find('./PE:ImageResolutionX',NS)
             y = e.find('./PE:ImageResolutionY',NS)
-            channel["image_resolution"]: {
+            channel["image_resolution"] = {
                 "x": {"unit":x.attrib["Unit"], "value":float(x.text),},
                 "y": {"unit":y.attrib["Unit"], "value":float(y.text),},
             }

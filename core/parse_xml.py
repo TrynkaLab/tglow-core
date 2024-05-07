@@ -1,6 +1,6 @@
 #!/usr/bin/env python 
 #
-# Copied from Martin Prete's scripts
+# Adapted from Martin Prete's scripts
 ####################################################################
 # Script invocation:
 # python actions/parse_xml.py \
@@ -17,6 +17,7 @@ import json
 import logging
 import argparse
 from xml.etree import ElementTree as ET
+from image_query import ImageQuery
 
 # Setup logging
 logging.basicConfig(format='%(asctime)s %(message)s')
@@ -37,6 +38,67 @@ class PerkinElmerParser(object):
         self.parse_channels()
         self.parse_planes()
         
+    def estimate_pixel_sizes(self):
+        """
+        Extracts the pixel sizes from a PE index xml in (z, y, x) and returns in in microns
+        Returns none if could not be estimated
+        """
+        img0=None
+        img1=None
+
+        for img in self.wells[0]["images"]:
+            if img["plane"] == '1':
+                img0=img
+                next
+            if img["plane"] == '2':
+                img1=img
+                break
+
+        zres = abs(img0["position"]["z"]["value"] - img1["position"]["z"]["value"])
+        zunit = img1["position"]["z"]["unit"]
+    
+        # Convert to microns
+        if zunit == "m":
+            zres=zres*1e6
+        else:
+            log.warn(f"Could not estimate z resolution, invalid unit {zunit}")
+            zres=None
+
+        # Y resolution
+        if self.channels is not None and len(self.channels) > 0:
+            yres = self.channels[0]["image_resolution"]["y"]["value"]
+            yunit = self.channels[0]["image_resolution"]["y"]["unit"]
+            
+            # Convert to microns
+            if yunit == "m":
+                yres=yres*1e6
+            else:
+                log.warn(f"Could not estimate y resolution, invalid unit {yunit}")
+                zres=None
+        else:
+            log.warn(f"Could not estimate y resolution, no channel info")
+            zres=None
+
+        # X resolution
+        if self.channels is not None and len(self.channels) > 0:
+            xres = self.channels[0]["image_resolution"]["x"]["value"]
+            xunit = self.channels[0]["image_resolution"]["x"]["unit"]
+
+            # Convert to microns
+            if xunit == "m":
+                xres=xres*1e6
+            else:
+                log.warn(f"Could not estimate x resolution, invalid unit {xunit}")
+                xres=None
+        else:
+            log.warn(f"Could not estimate x resolution, no channel info")
+            xres=None
+
+        if zres is not None and yres is not None and xres is not None:
+            return [zres, yres, xres]
+        else:
+            return None         
+    
     def parse_channels(self):
         """Get PE channels"""
         log.info(f"[+] Reading Channels metadata")
@@ -68,8 +130,12 @@ class PerkinElmerParser(object):
                 # channel["flatfield"] = self.xml.find(ff_selector,self.NS).text
                 self.channels.append(channel)
                 log.info(f" ├ {channel['id']} = {channel['name']}")
+        
         log.info(f" └ Channel count = {len(self.channels)}")
 
+        if len(self.channels) == 0:
+            log.warn("No channel map found! This is the case for Operetta idx (TODO)")
+            self.channels=None
 
     def parse_planes(self):
         """Get PE planes as a sorted list"""
@@ -93,7 +159,7 @@ class PerkinElmerParser(object):
                 "plane": image.find("./PE:PlaneID",self.NS).text,
                 "channel": image.find("./PE:ChannelID",self.NS).text,
                 "timepoint": image.find("./PE:TimepointID",self.NS).text,
-                "sequence": image.find("./PE:SequenceID",self.NS).text,
+                "sequence": image.find("./PE:SequenceID",self.NS).text if image.find("./PE:SequenceID",self.NS) is not None else None,
                 "time_offset": image.find("./PE:MeasurementTimeOffset",self.NS).text,
                 "time_abs": image.find("./PE:AbsTime",self.NS).text
             }
@@ -129,7 +195,6 @@ class PerkinElmerParser(object):
         log.info(f" ├ Rows = {self.plate['rows']}")
         log.info(f" └ Cols = {self.plate['cols']}")
         
-
     def parse_wells(self):
         """Get all PE Wells"""
         log.info(f"[+] Reading Wells metadata")
@@ -145,10 +210,13 @@ class PerkinElmerParser(object):
         log.info(f" └ Wells: {len(self.wells)}")
 
     def save(self, output_path):
+
         if not os.path.exists(output_path):
             os.makedirs(output_path, exist_ok=True)
+            
         out_json = os.path.join(output_path,f"{self.plate['name']}.json")
         log.info(f"[+] Saving JSON to : {out_json}")
+        
         d = {
                 "index": self.index_file,
                 "plate": self.plate,
@@ -158,11 +226,33 @@ class PerkinElmerParser(object):
         }
         with open(out_json, "w") as f:
             json.dump(d, f, sort_keys=True, indent=1)
+                     
+    def write_manifest(self, output_path):
+        if not os.path.exists(output_path):
+            os.makedirs(output_path, exist_ok=True)
+            
+        manifest = open(f"{output_path}/manifest.tsv", 'w')
+        
+        for well in self.wells:
+            iq = ImageQuery("", well["row"], well["col"], "")
+            
+            line = f"{iq.get_well_id()}\t{iq.get_well_id()[0]}\t{well['col']}\t{self.plate['name']}\t{self.index_file}\n"
+            
+            manifest.write(line)
+        
+        manifest.flush()
+        manifest.close()
+            
+        
+        
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Parse Perkin Elmer index XML file to JSON file')
     parser.add_argument('--input_file', type=str, required=False, help='Path to the PE Index file')
     parser.add_argument('--output_path', type=str, required=True, help='Path to the output directory where to storer the JSON file')
+    parser.add_argument('--to_manifest', required=False, action='store_true', default=False, help='Store the output as a well,plate,index csv file')
+    
+    
     try:
        args = parser.parse_args()
     except:
@@ -170,4 +260,9 @@ if __name__ == '__main__':
        exit(1)
 
     pe_data = PerkinElmerParser(args.input_file)
-    pe_data.save(args.output_path)
+    
+    if args.to_manifest:
+        pe_data.write_manifest(args.output_path)
+    else:
+        pe_data.save(args.output_path)
+
