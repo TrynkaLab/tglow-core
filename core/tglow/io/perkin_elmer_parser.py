@@ -17,7 +17,7 @@ import json
 import logging
 import argparse
 from xml.etree import ElementTree as ET
-from image_query import ImageQuery
+from tglow.io.image_query import ImageQuery
 
 # Setup logging
 logging.basicConfig(format='%(asctime)s %(message)s')
@@ -242,27 +242,4 @@ class PerkinElmerParser(object):
         
         manifest.flush()
         manifest.close()
-            
-        
-        
-
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Parse Perkin Elmer index XML file to JSON file')
-    parser.add_argument('--input_file', type=str, required=False, help='Path to the PE Index file')
-    parser.add_argument('--output_path', type=str, required=True, help='Path to the output directory where to storer the JSON file')
-    parser.add_argument('--to_manifest', required=False, action='store_true', default=False, help='Store the output as a well,plate,index csv file')
-    
-    
-    try:
-       args = parser.parse_args()
-    except:
-       parser.print_help()
-       exit(1)
-
-    pe_data = PerkinElmerParser(args.input_file)
-    
-    if args.to_manifest:
-        pe_data.write_manifest(args.output_path)
-    else:
-        pe_data.save(args.output_path)
-
+                 

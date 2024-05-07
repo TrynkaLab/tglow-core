@@ -11,7 +11,7 @@ process prepare_manifest {
         path "manifest.tsv"
     script:
     """
-    python $params.tglow_core_dir/parse_xml.py \
+    python $params.tglow_core_dir/runners/parse_xml.py \
     --input_file $index_xml \
     --output_path ./ \
     --to_manifest
@@ -35,7 +35,7 @@ process fetch_raw {
         path "$plate/$row/$col"
     script:
     """
-    python $params.tglow_core_dir/convert_pe_raw.py \
+    python $params.tglow_core_dir/runners/convert_pe_raw.py \
     --input_file '$index_xml' \
     --output_path ./ \
     --well $well

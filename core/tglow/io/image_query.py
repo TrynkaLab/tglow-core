@@ -1,5 +1,5 @@
 import re
-from tglow_utils import build_well_index
+from tglow.utils.tglow_utils import build_well_index
 
 class ImageQuery:
     """Bean that stores data relevant for fetching and saving multiwell images"""

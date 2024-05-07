@@ -10,9 +10,9 @@ import logging
 from aicsimageio import AICSImage
 from aicsimageio.writers import OmeTiffWriter
 
-from image_query import ImageQuery
-from parse_xml import PerkinElmerParser
-from tglow_utils import default_to_regular
+from tglow.io.image_query import ImageQuery
+from tglow.io.perkin_elmer_parser import PerkinElmerParser
+from tglow.utils.tglow_utils import default_to_regular
 
 # Logging
 logging.basicConfig(format='%(asctime)s %(message)s')
@@ -178,7 +178,6 @@ class PerkinElmerRawReader(IndexedImageReader):
             index[plate][str(file['row'])][str(file['col'])][str(file['field'])][str(file['channel'])][str(file['plane'])] = f"{self.path}/{file['file']}"
             
         return default_to_regular(index)
-
 
 
 class AICSImageReader():

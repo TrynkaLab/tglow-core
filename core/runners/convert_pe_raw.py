@@ -1,7 +1,7 @@
-import tglow_io
 import os
 import logging
-from image_query import ImageQuery
+from tglow.io.image_query import ImageQuery
+import tglow.io.tglow_io as tglow_io
 import argparse
 from aicsimageio.types import PhysicalPixelSizes    
 
