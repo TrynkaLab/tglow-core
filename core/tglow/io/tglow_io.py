@@ -6,6 +6,7 @@ import re
 import os
 import glob
 import logging
+import string
 
 from aicsimageio import AICSImage
 from aicsimageio.writers import OmeTiffWriter
@@ -183,8 +184,11 @@ class PerkinElmerRawReader(IndexedImageReader):
 class AICSImageReader():
     """Reads image data from ome tiffs in a folder structure /plate/row/col/field.ome.tiff where field.ome.tiff is a CZYX array"""
     
-    def __init__(self, path, dtype=np.uint16, resolution=None) -> None:
+    def __init__(self, path, plates_filter=None, fields_filter=None, dtype=np.uint16, resolution=None) -> None:
         self.path = path
+        self.plates_filter = plates_filter
+        self.fields_filter = fields_filter
+        self.__build_index__()
 
     def _deprecated_build_index__(self):
         
@@ -207,6 +211,74 @@ class AICSImageReader():
                 index[str(plate)][str(row)][str(col)][str(field)] = fov[field]
                 
         self.index = default_to_regular(index)
+    
+    def __build_index__(self):
+        
+        plates = self.__list_directories__(self.path)
+        
+        if self.plates_filter is not None:
+            plates = [plate for plate in plates if plate in self.plates_filter]
+            
+        nested_dict = lambda: collections.defaultdict(nested_dict)
+        index = nested_dict()
+        
+        chars = string.ascii_uppercase
+        nums = list(range(1, len(chars)))
+        conv = dict(zip(chars,nums))
+
+        nplates=0
+        nwells=0
+        wells={}
+        
+        self.plates = set(plates)
+        self.rows = set()
+        self.cols = set()
+        self.fields = set()
+        self.images = []
+
+        for plate in plates:
+            rows = self.__list_directories__(f"{self.path}/{plate}")
+            self.rows.update(rows)
+            nplates = nplates+1
+            
+            wells[plate] = set()
+            for row in rows: 
+                cols = self.__list_directories__(f"{self.path}/{plate}/{row}")
+                self.cols.update(cols)
+                
+                for col in cols:
+                    nwells = nwells+1
+                    wells[plate].add(f"{row}{col.zfill(2)}")
+                    
+                    fields = glob.glob(f"{self.path}/{plate}/{row}/{col}/*.ome.tiff")
+                    fields = [os.path.normpath(f) for f in fields]
+                    fields = [os.path.basename(f) for f in fields]
+                    fields = [f.replace(".ome.tiff", "") for f in fields]
+                    
+                    if self.fields_filter is not None:
+                        fields = [field for field in self.fields if field in self.fields_filter]
+                    self.fields.update(fields)
+                    
+                    for field in fields:
+                        iq = ImageQuery(plate, conv[row], col, field)
+                        index[str(plate)][str(conv[row])][str(col)][str(field)] = iq #f"{self.path}/{plate}/{row}/{col}/{field}.ome.tiff"
+                        self.images.append(iq)
+                        
+        self.index = default_to_regular(index)
+        self.wells = wells
+                    
+        #if self.fields_filter is not None:
+        #    self.fields = [field for field in self.fields if field in self.fields_filter]
+        
+        log.info(f"Indexed {nwells} wells in {nplates} plates")
+        log.info(plates)
+        log.info(wells)
+    
+    def __list_directories__(self, path):
+        return [ name for name in os.listdir(path) if os.path.isdir(os.path.join(path, name)) ]
+    
+    def get_wells(self, plate):
+        return self.wells[plate]
     
     def get_img(self, query):
         img = AICSImage(f"{self.path}/{query.plate}/{ImageQuery.ID_TO_ROW[query.row]}/{query.col}/{query.field}.ome.tiff")
