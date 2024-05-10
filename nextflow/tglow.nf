@@ -51,32 +51,59 @@ process basicpy {
     input:
         tuple val(plate), val(img_channel)
     output:
-        path "${plate}_ch${img_channel}"      
+        path "${plate}_ch${img_channel}" into basicpy_file_out
+        tuple val(plate), val(img_channel) into basicpy_out       
     script:
-    """
-    python $params.tg_core_dir/train_basicpy_2.py \
-    --input $params.rn_image_dir \
-    --output ./ \
-    --output_prefix $plate \
-    --plate $plate \
-    --nimg 3 \
-    --no_tune \
-    --channel $img_channel
-    """
+        cmd = "\
+        python $params.tg_core_dir/run_basicpy.py \
+        --input $params.rn_image_dir \
+        --output ./ \
+        --output_prefix $plate \
+        --plate $plate \
+        --nimg 3 \
+        --no_tune \
+        --channel $img_channel
+        "
+        
+        if params.rn_max_project:
+            cmd += "--max_project"
+            
+        cmd
 }
 
 // Cellpose
 // gpu_normal queue
 process cellpose {
     conda params.tg_conda_env
-    scratch true
+    //scratch true
     storeDir "${params.rn_publish_dir}/masks/${plate}"
     
     input:
-        tuple val(well), val(plate)
+        tuple val(plate), val(well), val(row), val(col), val(cell_channel), val(nucl_channel)
+    output:
+        path "${plate}/${row}/${col}/*_cell_mask*.tif"
+        path "${plate}/${row}/${col}/*_nucl_mask*.tif"
+        tuple plate, well, row, col, path "${plate}/${row}/${col}/*_cell_mask*.tif", path "${plate}/${row}/${col}/*_nucl_mask*.tif" into cellpose_out
     script:
-    """
-    """
+        cmd = "
+        python $params.tg_core_dir/run_cellpose.py \
+        --input $params.rn_image_dir \
+        --output ./ \
+        --plate $plate \
+        --well $well \
+        --nucl_channel $nucl_channel \
+        --cell_channel $cell_channel \
+        --gpu \
+        --diameter $params.cp_cell_size \
+        --diameter_nucl $params.cp_nucl_size \
+        "
+        
+        if (params.max_project) {
+            cmd += "--no_3d"
+        }
+        
+        cmd
+
 }
 
 
@@ -166,6 +193,8 @@ workflow stage {
 workflow run_pipeline {
 
     main:
+    
+        //------------------------------------------------------------
         // Read manifest
         manifest = Channel.fromPath(params.rn_manifest)
             .splitCsv(header:true, sep:"\t")
@@ -173,6 +202,10 @@ workflow run_pipeline {
             
         //manifest.view()
 
+        //------------------------------------------------------------
+        // Run basicpy
+        
+        // If there is no global overide on basicpy channels, get them from manifest
         if (params.bp_channels == null) {
             def csvFile = new File(params.rn_manifest)
             def csvData = csvFile.readLines()
@@ -194,10 +227,11 @@ workflow run_pipeline {
         
         //basicpy_channels = basicpy_channels.combine(manifest, by:0)
         //basicpy_in.view()
-        
         basicpy_out = basicpy(basicpy_in)
         
+        //------------------------------------------------------------
         // Loop over previously generated manifests assuming stage has been run
+        // Here we start to run the seqeuntial processes, the first part runs independently
         if (params.rn_manifest_well == null) {
             // code that reads paths available manfiests from previous stage
             manifests_in = Channel.fromPath("${params.rn_image_dir}/*/manifest.tsv")
@@ -205,57 +239,53 @@ workflow run_pipeline {
             manifests_in = Channel.from(params.rn_manifest_well)
         }
 
-        //manifests_in.view()
         well_channel = manifests_in.flatMap{ manifest_path -> file(manifest_path).splitCsv(header:["well", "row", "col", "plate", "index_xml"], sep:"\t") }
 
-        // Re-order the well channel
-        well_channel = well_channel.map{ row -> tuple(row.plate, row.well, row.row, row.col)}
+        // Re-order the well channel for later merging
+        well_in = well_channel.map{ row -> tuple(row.plate, row.well, row.row, row.col)}
+                
+        //------------------------------------------------------------
+        // Cellpose
         
-        combined = well_channel.combine(manifest, by: 0)
-        .map{ row -> tuple(plate: row[0], well: row[1], nucl_channel: row[7], other_channel: row[8])}
+        // Append the things from the manifest needed for cellpose
+        cellpose_in = well_in.combine(manifest, by: 0)
+        .map{ row -> tuple(plate: row[0], well: row[1], row: row[2], col: row[3], nucl_channel: row[7], cell_channel: row[8])}
         .collect()
         .collect()
 
-        combined.view()
-        //combined.view()
-        //combined.view()        
+        //cellpose_in.view()
         
+        cellpose_out = cellpose(cellpose_in)
+        
+        //------------------------------------------------------------
+        // Deconvelute
+        //deconvelute_out = deconvelute(well_in)
+        
+        //------------------------------------------------------------
+        // Register
+        // remap well in channel that combines plates based on a config item
+        // so:
+        // [plate 1, well, (ch1, ch2)]
+        // [plate 2, well, (ch4, ch2)]
+        // [plate N, well, (ch5, ch3)]
 
-    // Cellpose - GPU
-    // - plate
-    // - well
-    // - [OPTIONAL] estimated cell size
-    // - [OPTIONAL] max project
-    // + masks [publish?]
+        // becomes:
+        // [plate 1, well, ch1, ch2, [plate 2, plate N], [ch4, ch5], [ch2, ch3]]
+        
+        // Either output the same channel and do the actual merge later
+        // just the registration matrices are saved, or save the actual registered
+        // images
+        
+        //registration_out = register(well_in)
+        
+        
+        //------------------------------------------------------------
+        // Cellprofiler / get_features
+        
+        // Input channel:
+        // plate, well, row, col, cellpose_nucl, cellpose_cell, registration_mat[optional], basicpy_dict[optional]
+        
+        // 
 
-    // Register
-    // - plate ref
-    // - well
-    // - second plates (1,2,3,4,5)
-    // + registration matrices [publish]
-
-    // Deconvelute - GPU
-    // if params.decon:
-        // - channel
-        // - plate
-        // - well
-        // - [OPTIONAL] flatfield (perhaps not needed) 
-        // img_channel = decon
-    // else:
-        // img_channel = raw
-
-
-    // Cellprofiler
-        // Stage
-        // - plate
-        // - well
-        // - [OPTIONAL] max project
-        // - [OPTIONAL] flatfield
-        // - 
-
-        // Cellprofiler
-        // - image dir
-        // - pipeline
-        // + output files [export]
 }
 

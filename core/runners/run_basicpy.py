@@ -65,7 +65,7 @@ log.setLevel(logging.DEBUG)
 
 class BasicpyTrainer():
     
-    def __init__(self, path, output_dir, output_prefix,  channel,  nimg, merge_n, tune, fit_darkfield, all_planes=False, plates=None, fields=None, planes=None):
+    def __init__(self, path, output_dir, output_prefix,  channel,  nimg, merge_n, tune, fit_darkfield, all_planes=False, max_project=False, plates=None, fields=None, planes=None):
         
         self.path=path
         self.channel=channel
@@ -81,6 +81,11 @@ class BasicpyTrainer():
         
         self.output_dir=output_dir
         self.output_prefix=output_prefix
+        
+        self.max_project=max_project
+        
+        if self.max_project:
+            self.all_planes=True
             
     def train(self):
         
@@ -109,7 +114,10 @@ class BasicpyTrainer():
                 
                 if self.all_planes:
                     img = ac_reader.read_image(q)
-                    training_imgs_tmp.append(list(img))
+                    if self.max_project:
+                        training_imgs_tmp.append(np.max(img, axis=0))
+                    else:
+                        training_imgs_tmp.append(list(img))
                 else:
                     if self.planes is not None:
                         rplane = random.sample(self.planes, k=1)[0]
@@ -166,7 +174,6 @@ class BasicpyTrainer():
         plot_before_after(merged, merged_corrected, 1, filename=out + "/img1_pre_post.png")
                 
 
-# Main loop, needs a lot of cleanup, too many globals
 if __name__ == "__main__":
     
     # CLI 
@@ -184,6 +191,7 @@ if __name__ == "__main__":
     parser.add_argument('--planes', help='Z planes to use', nargs='+', default=None)
     #parser.add_argument('--gpu', help="Use the GPU", action='store_true', default=False)
     parser.add_argument('--all_planes', help="Instead of randomly picking one plane for a stack, use them all", action='store_true', default=False)
+    parser.add_argument('--max_project', help="Calculate flatfields on max projections. Automatically activates --all_planes", action='store_true', default=False)
     args = parser.parse_args()
     
     input=args.input
@@ -193,6 +201,12 @@ if __name__ == "__main__":
         plates=[ name for name in os.listdir(input) if os.path.isdir(os.path.join(input, name)) ]
     else:
         plates=args.plate
+    
+    # If max projecting all_planes also needs to be true so the full stack is read
+    # This is also forced in the constructor, but this is so its printed well here
+    # TODO: make the printing a method
+    if args.max_project:
+        args.all_planes=True
     
     print("-----------------------------------------------------------")
     print("Input plates:\t" + str(plates))
@@ -206,6 +220,7 @@ if __name__ == "__main__":
     print("tune basicpy:\t" + str(not args.no_tune))
     print("merge n:\t" + str(args.merge_n))
     print("darkfied:\t" + str(args.fit_darkfield))
+    print("max project:\t" + str(args.max_project))
     print("-----------------------------------------------------------")
 
     trainer = BasicpyTrainer(path=input,
@@ -217,6 +232,7 @@ if __name__ == "__main__":
                             merge_n=int(args.merge_n),
                             fit_darkfield=args.fit_darkfield,
                             all_planes=args.all_planes,
+                            max_project=args.max_project,
                             plates=plates,
                             fields=args.fields)
                             

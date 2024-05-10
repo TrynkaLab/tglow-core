@@ -58,6 +58,9 @@ class ImageQuery:
     def get_well_id(self):
         return f"{ImageQuery.ID_TO_ROW[self.row]}{self.col.zfill(2)}"
     
+    def get_well_letter(self):
+        return f"{ImageQuery.ID_TO_ROW[self.row]}"
+    
     def well_id_to_index(well_id) -> tuple:
         
         pat = re.compile(r'^([a-z])(\d+)', flags=re.IGNORECASE)
