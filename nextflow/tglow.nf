@@ -1,6 +1,7 @@
 
 // Prepare a manfiest
 process prepare_manifest {
+    label 'tiny_img'
     conda params.tg_conda_env
     storeDir "${params.rn_image_dir}/${plate}"
     
@@ -9,22 +10,31 @@ process prepare_manifest {
     output:
         path "manifest.tsv"
     script:
-    """
-    python $params.tg_core_dir/parse_xml.py \
-    --input_file $index_xml \
-    --output_path ./ \
-    --to_manifest
+        cmd =
+        """
+        python $params.tg_core_dir/parse_xml.py \
+        --input_file $index_xml \
+        --output_path ./ \
+        --to_manifest
+        """
+        
+        // Only keep the first few lines 
+        if (params.rn_testmode) {
+            cmd += 
+            """
+            head -n 3 manifest.tsv > tmp
+            mv tmp manifest.tsv
+            """
+        }
+        cmd
     
-    head -n 3 manifest.tsv > tmp
-    mv tmp manifest.tsv
-    
-    """
     //manifest = params.tglow_image_dir + "/" + plate + "/" + "manifest.tsv"
 }
 
 // Fetches raw data from NFS and recodes into new OME file structure
 // imaging queue
 process fetch_raw {
+    label 'tiny_img'
     conda params.tg_conda_env
     //storeDir "$params.rn_image_dir/$plate/$row/$col", mode: 'move'
     storeDir "${params.rn_image_dir}"
@@ -34,27 +44,29 @@ process fetch_raw {
     output:
         path "$plate/$row/$col"
     script:
-    """
-    python $params.tg_core_dir/convert_pe_raw.py \
-    --input_file '$index_xml' \
-    --output_path ./ \
-    --well $well
-    """         
+        """
+        python $params.tg_core_dir/convert_pe_raw.py \
+        --input_file '$index_xml' \
+        --output_path ./ \
+        --well $well
+        """         
 }
 
 // Basicpy
 // normal queue
 process basicpy {
+    label 'himem'
     conda params.tg_conda_env
     publishDir "${params.rn_publish_dir}/basicpy/${plate}", mode: 'copy'
 
     input:
         tuple val(plate), val(img_channel)
     output:
-        path "${plate}_ch${img_channel}" into basicpy_file_out
-        tuple val(plate), val(img_channel) into basicpy_out       
+        path "${plate}_ch${img_channel}", emit: basicpy_file_out
+        tuple val(plate), val(img_channel), emit: basicpy_out       
     script:
-        cmd = "\
+        cmd =
+        """
         python $params.tg_core_dir/run_basicpy.py \
         --input $params.rn_image_dir \
         --output ./ \
@@ -62,46 +74,53 @@ process basicpy {
         --plate $plate \
         --nimg 3 \
         --no_tune \
-        --channel $img_channel
-        "
+        --channel $img_channel \
+        """
         
-        if params.rn_max_project:
+        if (params.rn_max_project) {
             cmd += "--max_project"
+        }
             
         cmd
 }
 
 // Cellpose
-// gpu_normal queue
 process cellpose {
+    label 'gpu_midmem'
     conda params.tg_conda_env
+    storeDir "${params.rn_publish_dir}/masks/"
     //scratch true
-    storeDir "${params.rn_publish_dir}/masks/${plate}"
-    
+
     input:
-        tuple val(plate), val(well), val(row), val(col), val(cell_channel), val(nucl_channel)
+        tuple val(plate), val(well), val(row), val(col), val(nucl_channel), val(cell_channel)
     output:
-        path "${plate}/${row}/${col}/*_cell_mask*.tif"
-        path "${plate}/${row}/${col}/*_nucl_mask*.tif"
-        tuple plate, well, row, col, path "${plate}/${row}/${col}/*_cell_mask*.tif", path "${plate}/${row}/${col}/*_nucl_mask*.tif" into cellpose_out
+        path "${plate}/${row}/${col}/*_cell_mask*.tif", emit: cell_masks
+        path "${plate}/${row}/${col}/*_nucl_mask*.tif", emit: nucl_masks, optional: true
+        tuple val(plate), val(well), val(row), val(col), path("${plate}/${row}/${col}/*_cell_mask*.tif"), path("${plate}/${row}/${col}/*_nucl_mask*.tif"), emit: cellpose_out
     script:
-        cmd = "
+        cmd =
+        """
         python $params.tg_core_dir/run_cellpose.py \
         --input $params.rn_image_dir \
         --output ./ \
         --plate $plate \
         --well $well \
-        --nucl_channel $nucl_channel \
         --cell_channel $cell_channel \
         --gpu \
         --diameter $params.cp_cell_size \
-        --diameter_nucl $params.cp_nucl_size \
-        "
+        """
         
-        if (params.max_project) {
+        if ($nucl_channel > 0) {
+            cmd +=
+            """
+            --nucl_channel $nucl_channel  \
+            --diameter_nucl $params.cp_nucl_size
+            """
+        }    
+        
+        if (params.rn_max_project) {
             cmd += "--no_3d"
         }
-        
         cmd
 
 }
@@ -118,38 +137,43 @@ process cellprofiler {
         path input_dir
         val plate
         val well
-        val flatfields, optional: true
-        val registration_matrices, optional: true
+        path "images/*" masks
+        path flatfields, optional: true
+        path registration_matrices, optional: true
     output:
         path "*.tsv"
         
     script:
     
         // Outputs the cp files into ./images
-        command = "\
+        command = 
+        """
+        
+        # Stage files
         python stage_cellprofiler.py \
         --input $input_dir \
         --output ./images \
-        "
+        """
         
         if (params.rn_max_project) {
-            command = command + "--max_project "
+            command += "--max_project"
         }
         
         // Run cell profiler
-        command = command + "\n"
-        command = command + "\
+        command +=
+        """
+        # Run cellprofiler
         cellprofiler \
         -c \
         -r \
         -p $params.cp_pipeline \
         -o ./ \
         -i ./images \
-        --plugins-directory $params.cp_plugins"
+        --plugins-directory $params.cp_plugins
+        """
         
         return command
 }
-
 
 
 // Workflow to stage the data from NFS to lustre
@@ -198,7 +222,7 @@ workflow run_pipeline {
         // Read manifest
         manifest = Channel.fromPath(params.rn_manifest)
             .splitCsv(header:true, sep:"\t")
-            .map { row -> tuple(row.plate, row.index_xml, tuple(row.channels.split(',')),  tuple(row.bp_channels.split(',')), row.cp_nucl_channel, row.cp_other_channel)}
+            .map { row -> tuple(row.plate, row.index_xml, tuple(row.channels.split(',')),  tuple(row.bp_channels.split(',')), row.cp_nucl_channel, row.cp_cell_channel)}
             
         //manifest.view()
 
@@ -215,7 +239,7 @@ workflow run_pipeline {
             // Substract one from the channel is python is 0 indexed
             for (int i = 1; i < csvData.size(); i++) {
                 def curLine = csvData[i].split('\t')
-                def curChannels = curLine[2].split(',')
+                def curChannels = curLine[3].split(',')
                 for (channel in curChannels) {
                     plate_channel << tuple(curLine[0], channel.toInteger()-1)
                 }
@@ -243,15 +267,15 @@ workflow run_pipeline {
 
         // Re-order the well channel for later merging
         well_in = well_channel.map{ row -> tuple(row.plate, row.well, row.row, row.col)}
-                
+        
+        //well_in.view()
         //------------------------------------------------------------
         // Cellpose
         
         // Append the things from the manifest needed for cellpose
+        // Use -1 as the channels are 0 indexed
         cellpose_in = well_in.combine(manifest, by: 0)
-        .map{ row -> tuple(plate: row[0], well: row[1], row: row[2], col: row[3], nucl_channel: row[7], cell_channel: row[8])}
-        .collect()
-        .collect()
+        .flatMap{ row -> tuple(plate: row[0], well: row[1], row: row[2], col: row[3], nucl_channel: row[7]-1, cell_channel: row[8]-1)}
 
         //cellpose_in.view()
         

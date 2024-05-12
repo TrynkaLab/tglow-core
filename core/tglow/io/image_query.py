@@ -1,4 +1,5 @@
 import re
+import string
 from tglow.utils.tglow_utils import build_well_index
 
 class ImageQuery:
@@ -58,8 +59,8 @@ class ImageQuery:
     def get_well_id(self):
         return f"{ImageQuery.ID_TO_ROW[self.row]}{self.col.zfill(2)}"
     
-    def get_well_letter(self):
-        return f"{ImageQuery.ID_TO_ROW[self.row]}"
+    def get_row_letter(self):
+        return f"{string.ascii_uppercase[int(self.row)-1]}"
     
     def well_id_to_index(well_id) -> tuple:
         

@@ -5,6 +5,7 @@ import logging
 import argparse
 from tglow.io.tglow_io import AICSImageReader
 from tglow.io.image_query import ImageQuery
+import os
 
 # Cellpose logger
 #logger = io.logger_setup()
@@ -56,6 +57,10 @@ class CellposeRunner():
         
     def run_model(self, query):
         
+        
+        log.debug(f"Processing query {query.to_string()}, row: {query.row},row: {query.get_row_letter()}, col: {query.col}, well: {query.get_well_id()}")
+        
+        
         # Read channel with cell outlines
         query.channel = self.other_channel
         data_cell = self.reader.read_image(query)
@@ -95,25 +100,29 @@ class CellposeRunner():
                                                 anisotropy=self.anisotropy)
         log.info("Cell mask running time %s seconds" % round(time.time() - start_time))
 
+        if not os.path.exists(f"{self.output}/{query.plate}/{query.get_row_letter()}/{query.col}/"):
+            os.makedirs(f"{self.output}/{query.plate}/{query.get_row_letter()}/{query.col}")
+
         # save results as png
-        io.save_masks(img, masks, flows, f"{self.output}/{q.plate}/{q.get_well_letter()}/{q.col}/{q.field}_cell_mask_d{self.diameter}_ch{self.other_channel+1}", tif=True, png=False, save_outlines=True)
+        io.save_masks(img, masks, flows, f"{self.output}/{query.plate}/{query.get_row_letter()}/{query.col}/{query.field}_cell_mask_d{str(self.diameter)}_ch{self.other_channel}", tif=True, png=False, save_outlines=True)
         
         start_time = time.time()
         
-        if (self.do_3d):
-            nucl = img[:,:,:,1]
-        else:
-            nucl = img[:,:,1]
-        
-        masks, flows, styles, diams = model.eval(nucl,
-                                                diameter=self.diameter_nucl,
-                                                channels=channels,
-                                                do_3D=self.do_3d,
-                                                anisotropy=self.anisotropy)
-        log.info("Nucleus running time %s seconds" % round(time.time() - start_time))
+        if (self.nucl_channel is not None):
+            if (self.do_3d):
+                nucl = img[:,:,:,1]
+            else:
+                nucl = img[:,:,1]
+            
+            masks, flows, styles, diams = model.eval(nucl,
+                                                    diameter=self.diameter_nucl,
+                                                    channels=channels,
+                                                    do_3D=self.do_3d,
+                                                    anisotropy=self.anisotropy)
+            log.info("Nucleus running time %s seconds" % round(time.time() - start_time))
 
-        # save results as png
-        io.save_masks(img, masks, flows, f"{self.output}/{q.plate}/{q.get_well_letter()}/{q.col}/{q.field}_nucl_mask_d{self.diameter_nucl}_ch{self.nucl_channel+1}", tif=True, png=False, save_outlines=True)
+            # save results as png
+            io.save_masks(img, masks, flows, f"{self.output}/{query.plate}/{query.get_row_letter()}/{query.col}/{query.field}_nucl_mask_d{self.diameter_nucl}_ch{self.nucl_channel}", tif=True, png=False, save_outlines=True)
 
 
 if __name__ == "__main__":
@@ -124,7 +133,7 @@ if __name__ == "__main__":
     parser.add_argument('-p','--plate', help='Plates to process (at least one)', nargs='+', required=True)
     parser.add_argument('-w','--well', help='Wells to process (at least one)', nargs='+', required=True)
     parser.add_argument('-o','--output', help='Output folder', default="./")
-    parser.add_argument('--nucl_channel', help='Channel for nucleus signal', required=True)
+    parser.add_argument('--nucl_channel', help='Channel for nucleus signal', required=False, default=None)
     parser.add_argument('--cell_channel', help='Channel for cell segmentation signal', required=True)
     parser.add_argument('--model', help='Cellpose model', default="cyto2")
     parser.add_argument('--gpu', help="Use the GPU", action='store_true', default=False)
