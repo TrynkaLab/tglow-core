@@ -120,7 +120,6 @@ class Registration:
                 
             if self.eval_merge:
                 self.eval_field(cur_iq, alignment_matrices, outfile)
-            
         
         
     # Perform registration between planes
@@ -192,27 +191,33 @@ class Registration:
             file.write(line)
             file.close()
 
+    # Load a previously generated alignment matrix in {plate: <matrix>} dict
+    def load_field(iq, reg_dir):
+        
+        pickle_path = f"{reg_dir}/{iq.plate}/{ImageQuery.ID_TO_ROW[iq.row]}/{iq.col}/{iq.field}.pickle"
+        alignment_matrices = pickle.load(pickle_path)
 
-
+        return alignment_matrices
+    
     def printParams(self):
         
-        print(f"Input plates:\t{str(self.ref_plate)}")
-        print(f"Input fields:\t{str(self.fields)}")
-        #print(f"Input planes:\t{str(self.planes)}")   
-        #print(f"Input channel:\t{str(self.channels)}")     
-        print(f"Input:\t\t{self.input}")
-        print(f"Output:\t\t{self.output}")    
+        log.info(f"Input plates:\t{str(self.ref_plate)}")
+        log.info(f"Input fields:\t{str(self.fields)}")
+        #log.info(f"Input planes:\t{str(self.planes)}")   
+        #log.info(f"Input channel:\t{str(self.channels)}")     
+        log.info(f"Input:\t\t{self.input}")
+        log.info(f"Output:\t\t{self.output}")    
 
-        print(f"----------------------------")    
-        print(f"Merge plates:\t{str(self.plates_merge)}")     
-        #print(f"Merge channels:\t{str(self.channels_merge)}")  
-        print(f"Ref channel:\t{str(self.ref_channel)}")  
-        print(f"Qry channel:\t{str(self.qry_channel)}")
-        print(f"Ref channel eval:\t{str(self.ref_channel_eval)}")  
-        print(f"Qry channel eval:\t{str(self.qry_channel_eval)}")  
-        print(f"Transform:\t{str(self.transform)}")        
-        print(f"Save registr:\t{str(self.save_reg)}")     
-        print(f"Plot:\t\t{str(self.plot)}")     
+        log.info(f"----------------------------")    
+        log.info(f"Merge plates:\t{str(self.plates_merge)}")     
+        #log.info(f"Merge channels:\t{str(self.channels_merge)}")  
+        log.info(f"Ref channel:\t{str(self.ref_channel)}")  
+        log.info(f"Qry channel:\t{str(self.qry_channel)}")
+        log.info(f"Ref channel eval:\t{str(self.ref_channel_eval)}")  
+        log.info(f"Qry channel eval:\t{str(self.qry_channel_eval)}")  
+        log.info(f"Transform:\t{str(self.transform)}")        
+        log.info(f"Save registr:\t{str(self.save_reg)}")     
+        log.info(f"Plot:\t\t{str(self.plot)}")     
 
 
 # Main loop
@@ -235,15 +240,15 @@ if __name__ == "__main__":
     parser.add_argument('--qry_channel_eval', help='[OPTIONAL] Query channel for registration evaluation (nucleus)', nargs=1, default=None)
     args = parser.parse_args()
   
-    print("-----------------------------------------------------------")
+    log.info("-----------------------------------------------------------")
     if not os.path.exists(args.output):
         os.makedirs(args.output)
-        print(f"Folder created: {args.output}")
+        log.info(f"Folder created: {args.output}")
     
     runner = Registration(args)
-    print(f"Well:\t{args.well}")
+    log.info(f"Well:\t{args.well}")
     runner.printParams()
-    print("-----------------------------------------------------------")
+    log.info("-----------------------------------------------------------")
     
     runner.run(args.well)
 

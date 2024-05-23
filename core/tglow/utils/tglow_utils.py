@@ -129,13 +129,15 @@ def float_to_32bit_unint(matrix) -> np.array:
     
     return matrix
 
-# Encode numpy formats as JSON
-class NpEncoder(json.JSONEncoder):
-    def default(self, obj):
-        if isinstance(obj, np.integer):
-            return int(obj)
-        if isinstance(obj, np.floating):
-            return float(obj)
-        if isinstance(obj, np.ndarray):
-            return obj.tolist()
-        return super(NpEncoder, self).default(obj)
+# Convert a dict to a string for printing
+def dict_to_str(dict):
+    
+    if not dict == None:
+        str="{"
+        for key in dict.keys():
+            str=str+f"'{key}': {type(dict[key])},"
+        str=str+"}"
+        return str
+    else:
+        return None
+    
