@@ -97,7 +97,9 @@ class BasicpyTrainer():
         while i < self.merge_n:
             i=i+1
             # Select subset of images
-            merge_files = random.choices(ac_reader.images, k=self.nimg)
+            
+            all_imgs = [x for v in ac_reader.images.values() for x in v]
+            merge_files = random.choices(all_imgs, k=self.nimg)
             
             stack_dims = ac_reader.get_img(ac_reader.images[0]).dims
             

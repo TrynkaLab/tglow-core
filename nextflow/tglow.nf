@@ -34,7 +34,7 @@ process prepare_manifest {
 // Fetches raw data from NFS and recodes into new OME file structure
 // imaging queue
 process fetch_raw {
-    label 'tiny_img'
+    label 'small_img'
     conda params.tg_conda_env
     //storeDir "$params.rn_image_dir/$plate/$row/$col", mode: 'move'
     storeDir "${params.rn_image_dir}"
@@ -110,9 +110,9 @@ process cellpose {
         --diameter $params.cp_cell_size \
         """
         
-        if ($nucl_channel > 0) {
+        if (nucl_channel > 0) {
             cmd +=
-            """
+            """\
             --nucl_channel $nucl_channel  \
             --diameter_nucl $params.cp_nucl_size
             """
@@ -125,7 +125,6 @@ process cellpose {
 
 }
 
-
 // Run a cellprofiler run
 // regular queue
 process cellprofiler {
@@ -137,7 +136,8 @@ process cellprofiler {
         path input_dir
         val plate
         val well
-        path "images/*" masks
+        path cell_masks
+        path nucl_masks
         path flatfields, optional: true
         path registration_matrices, optional: true
     output:
@@ -148,7 +148,6 @@ process cellprofiler {
         // Outputs the cp files into ./images
         command = 
         """
-        
         # Stage files
         python stage_cellprofiler.py \
         --input $input_dir \
@@ -275,7 +274,7 @@ workflow run_pipeline {
         // Append the things from the manifest needed for cellpose
         // Use -1 as the channels are 0 indexed
         cellpose_in = well_in.combine(manifest, by: 0)
-        .flatMap{ row -> tuple(plate: row[0], well: row[1], row: row[2], col: row[3], nucl_channel: row[7]-1, cell_channel: row[8]-1)}
+        .flatMap{ row -> tuple(plate: row[0], well: row[1], row: row[2], col: row[3], nucl_channel: row[7].toInteger()-1, cell_channel: row[8].toInteger()-1)}
 
         //cellpose_in.view()
         

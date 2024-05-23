@@ -128,3 +128,14 @@ def float_to_32bit_unint(matrix) -> np.array:
     matrix = matrix.astype(np.uint32)
     
     return matrix
+
+# Encode numpy formats as JSON
+class NpEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, np.integer):
+            return int(obj)
+        if isinstance(obj, np.floating):
+            return float(obj)
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return super(NpEncoder, self).default(obj)

@@ -6,6 +6,7 @@ import argparse
 from tglow.io.tglow_io import AICSImageReader
 from tglow.io.image_query import ImageQuery
 import os
+import math
 
 # Cellpose logger
 #logger = io.logger_setup()
@@ -34,6 +35,13 @@ class CellposeRunner():
         self.other_channel=other_channel
         self.diameter=diameter
         self.diameter_nucl=diameter_nucl
+        
+        # Minimum object area in pixels
+        self.min_size= math.pi * ((self.diameter/4) ** 2)
+        
+        if self.diameter_nucl is not None:
+            self.min_size_nucl= math.pi * ((self.diameter_nucl/4) ** 2)
+
         
     def __init_reader__(self):
         
@@ -65,39 +73,50 @@ class CellposeRunner():
         query.channel = self.other_channel
         data_cell = self.reader.read_image(query)
         
-        # Read channel with nucleus signal
-        query.channel = self.nucl_channel
-        data_nucl = self.reader.read_image(query)
-        
+        # If max projection is true
         if not self.do_3d:
             data_cell = np.max(data_cell, axis=0)
-            data_nucl = np.max(data_nucl, axis=0)
-            log.debug(f"cell: {data_cell.shape} nucl: {data_nucl.shape}")
+            log.debug(f"cell shape: {data_cell.shape}")
+            
+        # Read channel with nucleus signal
+        if self.nucl_channel:
+            query.channel = self.nucl_channel
+            data_nucl = self.reader.read_image(query)
+            
+            if not self.do_3d:
+                data_nucl = np.max(data_nucl, axis=0)
+                log.debug(f"nucl shape: {data_nucl.shape}")
         
-        # Combine into stack
-        img = np.stack([data_cell, data_nucl], axis=-1)
-        
+            # Combine into stack
+            img = np.stack([data_cell, data_nucl], axis=-1)
+            channel_axis=3
+            # define CHANNELS to run segementation on
+            channels = [1,2]
+            # grayscale=0, R=1, G=2, B=3
+            # channels = [cytoplasm, nucleus]
+            # if NUCLEUS channel does not exist, set the second channel to 0
+            # channels = [0,0]
+            # IF ALL YOUR IMAGES ARE THE SAME TYPE, you can give a list with 2 elements
+            # channels = [0,0] # IF YOU HAVE GRAYSCALE
+            # channels = [2,3] # IF YOU HAVE G=cytoplasm and B=nucleus
+            # channels = [2,1] # IF YOU HAVE G=cytoplasm and R=nucleus
+            # or if you have different types of channels in each image
+        else:
+            # In the case there is no nucleus channel
+            img = data_cell
+            channels = [0,0]
+            channel_axis=None
+            
         log.debug(f"Read images in stack of shape {img.shape}")
-        # define CHANNELS to run segementation on
-        # grayscale=0, R=1, G=2, B=3
-        # channels = [cytoplasm, nucleus]
-        # if NUCLEUS channel does not exist, set the second channel to 0
-        # channels = [0,0]
-        # IF ALL YOUR IMAGES ARE THE SAME TYPE, you can give a list with 2 elements
-        # channels = [0,0] # IF YOU HAVE GRAYSCALE
-        # channels = [2,3] # IF YOU HAVE G=cytoplasm and B=nucleus
-        # channels = [2,1] # IF YOU HAVE G=cytoplasm and R=nucleus
-
-        # or if you have different types of channels in each image
-        channels = [0,0]
-                
+         
         start_time = time.time()
         masks, flows, styles, diams = model.eval(img,
                                                 diameter=self.diameter,
                                                 channels=channels,
-                                                channel_axis=3,
+                                                channel_axis=channel_axis,
                                                 do_3D=self.do_3d,
-                                                anisotropy=self.anisotropy)
+                                                anisotropy=self.anisotropy,
+                                                min_size=self.min_size)
         log.info("Cell mask running time %s seconds" % round(time.time() - start_time))
 
         if not os.path.exists(f"{self.output}/{query.plate}/{query.get_row_letter()}/{query.col}/"):
@@ -116,9 +135,10 @@ class CellposeRunner():
             
             masks, flows, styles, diams = model.eval(nucl,
                                                     diameter=self.diameter_nucl,
-                                                    channels=channels,
+                                                    channels=[0,0],
                                                     do_3D=self.do_3d,
-                                                    anisotropy=self.anisotropy)
+                                                    anisotropy=self.anisotropy,
+                                                    min_size=self.min_size_nucl)
             log.info("Nucleus running time %s seconds" % round(time.time() - start_time))
 
             # save results as png
@@ -147,14 +167,19 @@ if __name__ == "__main__":
     # Init cellpose model
     model = models.Cellpose(gpu=args.gpu, model_type=args.model)
     
-    if not args.no_3d and (args.diameter is None or args.diameter_nucl is None):
-        e = "Must provide --diameter and --diameter_nucl if running in 3d mode"
+    if not args.no_3d and args.diameter is None:
+        e = "Must provide --diameter if running in 3d mode"
+        log.error(e)
+        raise TypeError(e)
+    
+    if not args.no_3d and (args.diameter_nucl is None and args.nucl_channel is not None):
+        e = "Must provide --diameter_nucl if running in 3d mode and --nucl_channel is specified"
         log.error(e)
         raise TypeError(e)
     
     if args.no_3d:
         log.info("Max projecting image stacks before running cellpose")
-    
+        
     # Cellpose runner class
     runner = CellposeRunner(args.input,
                             args.plate,
@@ -171,6 +196,9 @@ if __name__ == "__main__":
     for plate in args.plate:
         for well in args.well:
             row_col = ImageQuery.well_id_to_index(well)    
+            #log.debug(f"Detected row_col {row_col} for well {well} in {plate}")
+            #log.debug(f"{runner.reader.index.keys()}")
+
             fields = runner.reader.index[plate][str(row_col[0])][str(row_col[1])].keys()
             log.info(f"Detected fields {fields} for well {well} in {plate}")
             

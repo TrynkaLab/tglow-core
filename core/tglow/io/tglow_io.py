@@ -231,20 +231,28 @@ class AICSImageReader():
         wells={}
         
         self.plates = set(plates)
-        self.rows = set()
-        self.cols = set()
-        self.fields = set()
-        self.images = []
+        self.rows = {}
+        self.cols = {}
+        self.fields = {}
+        self.images = {}
 
         for plate in plates:
             rows = self.__list_directories__(f"{self.path}/{plate}")
-            self.rows.update(rows)
+            
+            if plate not in self.rows:
+                self.rows[plate] = set()
+            self.rows[plate].update(rows)
+            
             nplates = nplates+1
             
             wells[plate] = set()
             for row in rows: 
                 cols = self.__list_directories__(f"{self.path}/{plate}/{row}")
-                self.cols.update(cols)
+                
+                if plate not in self.cols:
+                    self.cols[plate] = set()
+                    
+                self.cols[plate].update(cols)
                 
                 for col in cols:
                     nwells = nwells+1
@@ -257,12 +265,18 @@ class AICSImageReader():
                     
                     if self.fields_filter is not None:
                         fields = [field for field in self.fields if field in self.fields_filter]
-                    self.fields.update(fields)
+                        
+                    if plate not in self.fields:
+                        self.fields[plate] = set()
+                    self.fields[plate].update(fields)
                     
+                    if plate not in self.images:
+                        self.images[plate] = []
+                                            
                     for field in fields:
                         iq = ImageQuery(plate, conv[row], col, field)
                         index[str(plate)][str(conv[row])][str(col)][str(field)] = iq #f"{self.path}/{plate}/{row}/{col}/{field}.ome.tiff"
-                        self.images.append(iq)
+                        self.images[plate].append(iq)
                         
         self.index = default_to_regular(index)
         self.wells = wells

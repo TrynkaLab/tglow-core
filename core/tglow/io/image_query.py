@@ -73,6 +73,7 @@ class ImageQuery:
             raise Exception(f"No match found for {well_id}, does not match ^[a-Z]\d+")
         return (int(ImageQuery.ROW_TO_ID[row]), col)
         
+        
     def to_string(self):
         
         if (self.channel is None and self.plane is None):
