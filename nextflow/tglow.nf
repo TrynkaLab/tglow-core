@@ -63,7 +63,7 @@ process basicpy {
         tuple val(plate), val(img_channel)
     output:
         path "${plate}_ch${img_channel}", emit: basicpy_file_out
-        tuple val(plate), val(img_channel), emit: basicpy_out       
+        tuple val(plate), val(img_channel),  path("${plate}_ch${img_channel}"), emit: basicpy_out       
     script:
         cmd =
         """
@@ -97,6 +97,8 @@ process cellpose {
         path "${plate}/${row}/${col}/*_cell_mask*.tif", emit: cell_masks
         path "${plate}/${row}/${col}/*_nucl_mask*.tif", emit: nucl_masks, optional: true
         tuple val(plate), val(well), val(row), val(col), path("${plate}/${row}/${col}/*_cell_mask*.tif"), path("${plate}/${row}/${col}/*_nucl_mask*.tif"), emit: cellpose_out
+        //tuple val(plate), val(well), val(row), val(col), val("dave"), val("john"), emit: cellpose_out
+
     script:
         cmd =
         """
@@ -114,66 +116,131 @@ process cellpose {
             cmd +=
             """\
             --nucl_channel $nucl_channel  \
-            --diameter_nucl $params.cp_nucl_size
+            --diameter_nucl $params.cp_nucl_size\
             """
         }    
         
         if (params.rn_max_project) {
-            cmd += "--no_3d"
+            cmd += " --no_3d"
         }
+        
         cmd
 
 }
 
+// Register
+process register {
+    label 'normal'
+    conda params.tg_conda_env
+    publishDir "${params.rn_publish_dir}/registration/"
+
+    input:
+        tuple val(plate), val(well), val(row), val(col), val(reference_channel), val(query_plates), val(query_channels)
+    output:
+        tuple val(plate), val(well), val(row), val(col), val(query_plates), path(plate)
+    script:
+        cmd =
+        """
+        python $params.tg_core_dir/run_registration.py \
+        --input $params.rn_image_dir \
+        --output ./ \
+        --well $well \
+        --plate $plate \
+        --plate_merge $query_plates \
+        --ref_channel $reference_channel \
+        --qry_channel $query_channels\
+        """
+        
+        if (params.rg_plot) {
+            cmd += " --plot"
+        }
+        
+        if (params.rg_eval) {
+            cmd +=
+            """ \
+            --eval_merge \
+            --ref_channel_eval $reference_channel \
+            --qry_channel_eval $query_channels
+            """
+        }
+        
+        cmd
+
+}
+
+
 // Run a cellprofiler run
 // regular queue
 process cellprofiler {
-    scratch true
-    conda params.cp_conda_env
-    publishDir "$params.rn_publish_dir", mode: 'move'
+    //scratch true
+    label 'normal'
+    conda params.cpr_conda_env
+    publishDir "$params.rn_publish_dir/cellprofiler", mode: 'move'
     
     input:
-        path input_dir
-        val plate
-        val well
-        path cell_masks
-        path nucl_masks
-        path flatfields, optional: true
-        path registration_matrices, optional: true
+        tuple val(plate), val(key), val(well), val(row), val(col), path(nucl_masks), path(cell_masks), val(merge_plates), path(registration), val(basicpy_string)
     output:
         path "*.tsv"
-        
     script:
-    
         // Outputs the cp files into ./images
-        command = 
+        cmd = 
         """
         # Stage files
-        python stage_cellprofiler.py \
-        --input $input_dir \
+        python ${params.tg_core_dir}/stage_cellprofiler.py \
+        --input ${params.rn_image_dir} \
         --output ./images \
+        --well $well \
+        --plate $plate\
         """
         
-        if (params.rn_max_project) {
-            command += "--max_project"
+        if (merge_plates) {
+            cmd += " --plate_merge " + merge_plates
         }
         
-        // Run cell profiler
-        command +=
-        """
-        # Run cellprofiler
-        cellprofiler \
-        -c \
-        -r \
-        -p $params.cp_pipeline \
-        -o ./ \
-        -i ./images \
-        --plugins-directory $params.cp_plugins
-        """
+        if (registration) {
+            cmd += " --registration_dir ./"
+        }
+                
+        if (basicpy_string) {
+            cmd += " --basicpy_model $basicpy_string"
+        }
         
-        return command
-}
+        if (params.rn_max_project) {
+            cmd += " --max_project --no_zstack"
+        }
+                
+        // Stage the masks so cellprofiler can access them
+        cmd += "\nmv " + cell_masks.join(" ") + " ./images/$plate/$row/$col/"
+        
+        if (nucl_masks != null) {
+            cmd += "\nmv " + nucl_masks.join(" ") + " ./images/$plate/$row/$col/"
+        }
+         
+         
+        cmd += "\ntouch done.tsv"     
+        cmd
 
+        // Run cell profiler
+        //cmd +=
+        //"""
+        //# Run cellprofiler
+        //cellprofiler \
+        //-c \
+        //-r \
+        //-o ./ \
+        //-i ./images/$plate/$row/$col \
+        //--plugins-directory $params.cpr_plugins \
+        //"""
+        //
+        //if (params.rn_max_project) {
+        //   cmd += "-p $params.cpr_pipeline_2d"
+        //} else {
+        //    cmd += "-p $params.cpr_pipeline_3d"
+        //}
+        
+        
+        //cmd
+}
 
 // Workflow to stage the data from NFS to lustre
 workflow stage {
@@ -212,16 +279,29 @@ workflow stage {
         //fetch_raw(manifest)       
 }
 
+def convertChannelType(String input) {
+    if (input.isInteger()) {
+        return input.toInteger() - 1
+    } else {
+        return -9
+    }        
+}
+
 // Main workflow
 workflow run_pipeline {
 
     main:
-    
         //------------------------------------------------------------
         // Read manifest
         manifest = Channel.fromPath(params.rn_manifest)
             .splitCsv(header:true, sep:"\t")
-            .map { row -> tuple(row.plate, row.index_xml, tuple(row.channels.split(',')),  tuple(row.bp_channels.split(',')), row.cp_nucl_channel, row.cp_cell_channel)}
+            .map { row -> tuple(
+            row.plate,
+            row.index_xml,
+            tuple(row.channels.split(',')), 
+            tuple(row.bp_channels.split(',')),
+            row.cp_nucl_channel,
+            row.cp_cell_channel)}
             
         //manifest.view()
 
@@ -238,10 +318,14 @@ workflow run_pipeline {
             // Substract one from the channel is python is 0 indexed
             for (int i = 1; i < csvData.size(); i++) {
                 def curLine = csvData[i].split('\t')
-                def curChannels = curLine[3].split(',')
-                for (channel in curChannels) {
-                    plate_channel << tuple(curLine[0], channel.toInteger()-1)
+                
+                if (curLine[3] != "none") {
+                    def curChannels = curLine[3].split(',')
+                    for (channel in curChannels) {
+                        plate_channel << tuple(curLine[0], channel.toInteger()-1)
+                    }
                 }
+
             }
             basicpy_in = Channel.from(plate_channel)
         } else {
@@ -250,7 +334,7 @@ workflow run_pipeline {
         
         //basicpy_channels = basicpy_channels.combine(manifest, by:0)
         //basicpy_in.view()
-        basicpy_out = basicpy(basicpy_in)
+        basicpy_out = basicpy(basicpy_in).basicpy_out
         
         //------------------------------------------------------------
         // Loop over previously generated manifests assuming stage has been run
@@ -265,50 +349,178 @@ workflow run_pipeline {
         well_channel = manifests_in.flatMap{ manifest_path -> file(manifest_path).splitCsv(header:["well", "row", "col", "plate", "index_xml"], sep:"\t") }
 
         // Re-order the well channel for later merging
-        well_in = well_channel.map{ row -> tuple(row.plate, row.well, row.row, row.col)}
+        well_in = well_channel.map{ row -> tuple(
+            row.plate,
+            row.well,
+            row.row,
+            row.col
+        )}
         
         //well_in.view()
         //------------------------------------------------------------
         // Cellpose
         
         // Append the things from the manifest needed for cellpose
-        // Use -1 as the channels are 0 indexed
+        // Use -1 as the channels are 0 indexed                
         cellpose_in = well_in.combine(manifest, by: 0)
-        .flatMap{ row -> tuple(plate: row[0], well: row[1], row: row[2], col: row[3], nucl_channel: row[7].toInteger()-1, cell_channel: row[8].toInteger()-1)}
+        .filter(row -> {row[8] != "none"})
+        .map{ row -> tuple(
+            row[0], // plate
+            row[1], // well
+            row[2], // row
+            row[3], // col
+            convertChannelType(row[7]), // nucl_channel
+            row[8].toInteger()-1 // cell_channel
+        )}
+            //            nucl_channel: if row[7].isInteger() ? row[7].toInteger()-1 : -9,
 
-        //cellpose_in.view()
+        //------------------------------------------------------------
+        // Register
+        if (params.rn_manifest_registration != null) {
         
-        cellpose_out = cellpose(cellpose_in)
+            //well_in.view()
+            
+            manifest_registration = Channel.fromPath(params.rn_manifest_registration).splitCsv(header:true, sep:"\t")
+            .map{row -> tuple(
+                row.reference_plate,
+                row.reference_channel,
+                row.query_plates,
+                row.query_channels
+            )}
+
+            //manifest_registration.view()
+            // Append the plate info from the manifest if it exists
+            // Use a join so the plates to register are discarded
+            // Use -1 as the channels are 0 indexed
+            
+            registration_in = well_in.combine(manifest_registration, by:0)
+            .map{ row -> tuple(
+                row[0], // plate
+                row[1], // well
+                row[2], // row
+                row[3], // col
+                row[4].toInteger()-1, // reference_channel
+                row[5].split(',').each{it -> convertChannelType(it).toString()}.join(" "), // query_planes
+                row[6].split(',').each{it -> convertChannelType(it).toString()}.join(" ")  // query_channels
+            )} 
+                 
+            // Run registration
+            registration_out = register(registration_in)
+                          
+            // Filter cellpose channel to run reference plates only 
+            cellpose_in = cellpose_in.combine(manifest_registration, by: 0)
+            .map{ row -> tuple(
+                row[0], // plate
+                row[1], // well
+                row[2], // row
+                row[3], // col
+                row[4], // nucl_channel
+                row[5]  // cell_channel
+            )}
+                
+            //cellpose_in.view()
+        } else {
+            registration_out = null
+        }
         
+        // Run cellpose
+        //cellpose_in.view()    
+        cellpose_out = cellpose(cellpose_in).cellpose_out
+        
+
         //------------------------------------------------------------
         // Deconvelute
         //deconvelute_out = deconvelute(well_in)
-        
-        //------------------------------------------------------------
-        // Register
-        // remap well in channel that combines plates based on a config item
-        // so:
-        // [plate 1, well, (ch1, ch2)]
-        // [plate 2, well, (ch4, ch2)]
-        // [plate N, well, (ch5, ch3)]
-
-        // becomes:
-        // [plate 1, well, ch1, ch2, [plate 2, plate N], [ch4, ch5], [ch2, ch3]]
-        
-        // Either output the same channel and do the actual merge later
-        // just the registration matrices are saved, or save the actual registered
-        // images
-        
-        //registration_out = register(well_in)
-        
-        
+    
         //------------------------------------------------------------
         // Cellprofiler / get_features
+        if (params.cpr_run) {
+    
+            // Start with cellpose output
+            
+            // re-key channels
+            cellpose_out = cellpose_out.map{row -> tuple(
+                    row[0] + ":" + row[1], // key
+                    row[0], // plate
+                    row[1], // well
+                    row[2], // row
+                    row[3], // col
+                    row[4], // row[4], nucl masks
+                    row[5] // row[5], cell masks
+            )}
+                
+            // Add registration
+            if (registration_out != null) {
+                // re-key output
+                registration_out = registration_out.map{row -> tuple(
+                    row[0] + ":" + row[1], // key
+                    row[4], // merge plates
+                    row[5], // path
+                )} 
+                
+                // merge
+                cellprofiler_in = cellpose_out.join(registration_out, by: 0)
+            } else {
+                cellprofiler_in = cellpose_out.map{row -> tuple(
+                    row[0], // key
+                    row[1], // plate
+                    row[2], // well
+                    row[3], // row
+                    row[4], // col
+                    row[5], // nucl masks
+                    row[6], // cell masks,
+                    null,   // merge plates
+                    null,   // registration path
+                )}
+            }
+            
+    
+            // Basicpy models        
+            if (basicpy_out != null) {
+            
+                // Concat to plate string format
+                basicpy_out = basicpy_out.map{ row -> tuple(
+                    row[0], // plate
+                    row[0] + "_ch" + row[1] + "=" + row[2] // plate : channel = path
+                )}
+    
+                // debug only to test multiple channels
+                //basicpy_out=basicpy_out.concat(basicpy_out)
+    
+                // Merge channel of same plates into single string 
+                basicpy_out = basicpy_out
+                .groupTuple(by:0)
+                .map{row -> tuple(
+                    row[1].join(" "), //  plate_ch1=path1 plate_ch2=path2 plate_chX=pathX
+                    row[0] //plate
+                )}
+                  
+                // Append the basicpy models for a plate into that channel              
+                cellprofiler_in = cellprofiler_in.combine(basicpy_out, by: 1)
+            } else {
+            
+                cellprofiler_in = cellprofiler_in.map{row -> tuple(
+                        row[1], // plate
+                        row[0], // key
+                        row[2], // well
+                        row[3], // row
+                        row[4], // col
+                        row[5], // nucl masks
+                        row[6], // cell masks
+                        row[7], // merge plates
+                        row[8], // registration path
+                        null    // basicpy models       
+                )}
+                
+            }
         
-        // Input channel:
-        // plate, well, row, col, cellpose_nucl, cellpose_cell, registration_mat[optional], basicpy_dict[optional]
-        
-        // 
+            // Input channel:
+            // plate, key, well, row, col, cellpose_nucl, cellpose_cell, merge_plates, registration, basicpy
 
+            cellprofiler_in.view()
+            cellprofiler_out = cellprofiler(cellprofiler_in)
+        
+        }
+        
 }
 

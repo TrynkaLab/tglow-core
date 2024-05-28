@@ -105,7 +105,7 @@ class Registration:
             log.info(f"Calculating pearson correlation between ref and qry for channels {self.ref_channel_eval} and {self.qry_channel_eval}")
             outfile = f"{reg_dir}/registration_eval_pearson_correlations.tsv"
             file = open(outfile, "w")
-            file.write("well\trow\tcol\tfield\t\tref_plate\tqry_plate\tref_ch_eval\tqry_ch_eval\tref_ch\tqry_ch\tr_before\tp_before\tr_after\tt_after\n")
+            file.write("well\trow\tcol\tfield\tref_plate\tqry_plate\tref_ch_eval\tqry_ch_eval\tref_ch\tqry_ch\tr_before\tp_before\tr_after\tt_after\n")
             file.close()
             
         log.info(f"Running alignment between plates on max projections")
@@ -230,14 +230,14 @@ if __name__ == "__main__":
     parser.add_argument('-o','--output', help='Output prefix')
     parser.add_argument('-p','--plate', help='Subfolder in raw dir to process', nargs='+')
     parser.add_argument('-r','--ref_channel', help='Reference channel for registration (nucleus)', nargs=1, default=None)
-    parser.add_argument('-q','--qry_channel', help='Query channel for registration (nucleus)', nargs=1, default=None)
+    parser.add_argument('-q','--qry_channel', help='Query channel for registration (nucleus)', nargs="+", default=None)
     parser.add_argument('-m','--plate_merge', help='Plates to align using pystackreg (e.g. multiple cycles of the same plate). Output will be added as additional channels.', nargs='+', default=None)
     parser.add_argument('--fields', help='Fields to use. <field #1> | [<field #1> <field #2> <field #n>]', nargs='+', default=None)
     #parser.add_argument('--planes', help='Z planes to use. <plane #1> | [<plane #1> <plane #2> <plane #n>]', nargs='+', default=None)
     parser.add_argument('--plot', help="[OPTIONAL] Plot the before and after registration", action='store_true', default=False)
     parser.add_argument('--eval_merge', help="[OPTIONAL] Calculate correlation between two channels before and after", action='store_true', default=False)
     parser.add_argument('--ref_channel_eval', help='[OPTIONAL] Reference channel for registration evaluation (nucleus)', nargs=1, default=None)
-    parser.add_argument('--qry_channel_eval', help='[OPTIONAL] Query channel for registration evaluation (nucleus)', nargs=1, default=None)
+    parser.add_argument('--qry_channel_eval', help='[OPTIONAL] Query channel for registration evaluation (nucleus)', nargs='+', default=None)
     args = parser.parse_args()
   
     log.info("-----------------------------------------------------------")

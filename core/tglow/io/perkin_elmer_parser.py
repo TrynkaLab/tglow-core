@@ -61,7 +61,7 @@ class PerkinElmerParser(object):
         if zunit == "m":
             zres=zres*1e6
         else:
-            log.warn(f"Could not estimate z resolution, invalid unit {zunit}")
+            log.warning(f"Could not estimate z resolution, invalid unit {zunit}")
             zres=None
 
         # Y resolution
@@ -73,10 +73,10 @@ class PerkinElmerParser(object):
             if yunit == "m":
                 yres=yres*1e6
             else:
-                log.warn(f"Could not estimate y resolution, invalid unit {yunit}")
+                log.warning(f"Could not estimate y resolution, invalid unit {yunit}")
                 zres=None
         else:
-            log.warn(f"Could not estimate y resolution, no channel info")
+            log.warning(f"Could not estimate y resolution, no channel info")
             zres=None
 
         # X resolution
@@ -88,10 +88,10 @@ class PerkinElmerParser(object):
             if xunit == "m":
                 xres=xres*1e6
             else:
-                log.warn(f"Could not estimate x resolution, invalid unit {xunit}")
+                log.warning(f"Could not estimate x resolution, invalid unit {xunit}")
                 xres=None
         else:
-            log.warn(f"Could not estimate x resolution, no channel info")
+            log.warning(f"Could not estimate x resolution, no channel info")
             xres=None
 
         if zres is not None and yres is not None and xres is not None:
@@ -134,7 +134,7 @@ class PerkinElmerParser(object):
         log.info(f" └ Channel count = {len(self.channels)}")
 
         if len(self.channels) == 0:
-            log.warn("No channel map found! This is the case for Operetta idx (TODO)")
+            log.warning("No channel map found! This is the case for Operetta idx (TODO)")
             self.channels=None
 
     def parse_planes(self):

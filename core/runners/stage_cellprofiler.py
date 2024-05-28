@@ -9,7 +9,6 @@ from skimage import transform
 from matplotlib import pyplot as plt
 from pystackreg import StackReg
 
-
 import pickle
 import logging
 from tglow.io.tglow_io import AICSImageReader
@@ -42,7 +41,7 @@ class MergeAndAlign:
         self.registration_dir=args.registration_dir 
         
         if (self.plates_merge is None and self.registration_dir is not None):
-            raise RuntimeError("Need to supply registration_dir for registration")
+            raise RuntimeError("Need to supply plates for registration when registration dir is set")
         
         if self.plates_merge is not None:
             # Reader for plates
@@ -150,10 +149,12 @@ class MergeAndAlign:
                     cur_out = f"{out_dir_final}/{field}_{plate}_{well}_ch{str(channel)}.tiff"      
                 
                     # If flatfields are specified, apply them here
+                    bp_key=f"{plate}_ch{channel}"
+                    
                     if not self.flatfields == None:
-                        if str(channel) in self.flatfields.keys():
-                            log.info(f"Applying BaSiC model for channel: {str(channel)}")
-                            basic_model = self.flatfields[str(channel)]
+                        if str(bp_key) in self.flatfields.keys():
+                            log.info(f"Applying BaSiC model for channel: {str(bp_key)}")
+                            basic_model = self.flatfields[str(bp_key)]
                             merged = basic_model.transform(merged)
                             
                             # Convert to either 32 or 16 bit unsigned int
@@ -228,7 +229,7 @@ class MergeAndAlign:
         channel_names_old=img.channel_names
         
         if channel_names_old is None:
-            log.warn("Skipping writing new channel names as none were found")
+            log.warning("Skipping writing new channel names as none were found")
             return
         
         plate_names = [self.plates[0] for channel in channel_names_old]
@@ -259,7 +260,7 @@ class MergeAndAlign:
             channel_index.flush()
             channel_index.close()
         else:
-            log.warn("channel_indices.tsv already exists for this plate, skipping writing writing again")
+            log.warning("channel_indices.tsv already exists for this plate, skipping writing writing again")
         
         return range(0, len(channel_names_old))
     
