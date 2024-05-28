@@ -50,7 +50,8 @@ class CellposeRunner():
         
         if self.anisotropy is None and self.do_3d is True:
             log.info("Estimating anisotropy based on first image")
-            img1 = self.reader.images[0]
+            
+            img1 = self.reader.images[self.plate[0]][0]
             
             meta = self.reader.get_img(img1)            
             

@@ -101,7 +101,7 @@ class BasicpyTrainer():
             all_imgs = [x for v in ac_reader.images.values() for x in v]
             merge_files = random.choices(all_imgs, k=self.nimg)
             
-            stack_dims = ac_reader.get_img(ac_reader.images[0]).dims
+            stack_dims = ac_reader.get_img(all_imgs[0]).dims
             
             log.info(f"Reading {len(merge_files)} randomly selected files")
 
@@ -132,7 +132,7 @@ class BasicpyTrainer():
                 j=j+1
                 
             if self.merge_n > 1:
-                log.info("Merging " + str(self.nimg) + " random images for training")
+                log.info(f"Merging  {str(self.nimg)} random images for training")
                 training_imgs.append(np.max(np.array(training_imgs_tmp), axis=0))
             else:
                 # This gave issues as it puts an array of arrays, giving the wrong shape

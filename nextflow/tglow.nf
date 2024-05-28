@@ -72,14 +72,25 @@ process basicpy {
         --output ./ \
         --output_prefix $plate \
         --plate $plate \
-        --nimg 3 \
-        --no_tune \
-        --channel $img_channel \
+        --nimg $params.bp_nimg \
+        --channel $img_channel\
         """
         
         if (params.rn_max_project) {
-            cmd += "--max_project"
+            cmd += " --max_project"
         }
+            
+        if (params.bp_no_tune) {
+            cmd += " --no_tune"
+        }   
+        
+        if (params.bp_merge_n) {
+            cmd += " --merge_n $params.bp_merge_n"
+        }
+        
+        if (params.bp_all_planes) {
+            cmd += " --all_planes"
+        }   
             
         cmd
 }
@@ -110,11 +121,12 @@ process cellpose {
         --cell_channel $cell_channel \
         --gpu \
         --diameter $params.cp_cell_size \
+        --model $params.cp_model\
         """
         
         if (nucl_channel > 0) {
             cmd +=
-            """\
+            """ \
             --nucl_channel $nucl_channel  \
             --diameter_nucl $params.cp_nucl_size\
             """
@@ -281,7 +293,7 @@ workflow stage {
 
 def convertChannelType(String input) {
     if (input.isInteger()) {
-        return input.toInteger() - 1
+        return (input.toInteger() - 1)
     } else {
         return -9
     }        
@@ -380,7 +392,9 @@ workflow run_pipeline {
         
             //well_in.view()
             
-            manifest_registration = Channel.fromPath(params.rn_manifest_registration).splitCsv(header:true, sep:"\t")
+            manifest_registration = Channel
+            .fromPath(params.rn_manifest_registration)
+            .splitCsv(header:true, sep:"\t")
             .map{row -> tuple(
                 row.reference_plate,
                 row.reference_channel,
@@ -388,27 +402,28 @@ workflow run_pipeline {
                 row.query_channels
             )}
 
-            //manifest_registration.view()
             // Append the plate info from the manifest if it exists
             // Use a join so the plates to register are discarded
             // Use -1 as the channels are 0 indexed
-            
-            registration_in = well_in.combine(manifest_registration, by:0)
+            registration_in = well_in
+            .combine(manifest_registration, by:0)
             .map{ row -> tuple(
                 row[0], // plate
                 row[1], // well
                 row[2], // row
                 row[3], // col
                 row[4].toInteger()-1, // reference_channel
-                row[5].split(',').each{it -> convertChannelType(it).toString()}.join(" "), // query_planes
-                row[6].split(',').each{it -> convertChannelType(it).toString()}.join(" ")  // query_channels
+                row[5].split(',').join(" "), // query_plates
+                row[6].split(',').collect{it -> (it.toInteger() -1).toString()}.join(" ")  // query_channels
             )} 
+                 
                  
             // Run registration
             registration_out = register(registration_in)
                           
             // Filter cellpose channel to run reference plates only 
-            cellpose_in = cellpose_in.combine(manifest_registration, by: 0)
+            cellpose_in = cellpose_in
+            .combine(manifest_registration, by: 0)
             .map{ row -> tuple(
                 row[0], // plate
                 row[1], // well
@@ -517,7 +532,7 @@ workflow run_pipeline {
             // Input channel:
             // plate, key, well, row, col, cellpose_nucl, cellpose_cell, merge_plates, registration, basicpy
 
-            cellprofiler_in.view()
+            //cellprofiler_in.view()
             cellprofiler_out = cellprofiler(cellprofiler_in)
         
         }
