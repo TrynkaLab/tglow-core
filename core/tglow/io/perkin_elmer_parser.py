@@ -214,7 +214,8 @@ class PerkinElmerParser(object):
         if not os.path.exists(output_path):
             os.makedirs(output_path, exist_ok=True)
             
-        out_json = os.path.join(output_path,f"{self.plate['name']}.json")
+        #out_json = os.path.join(output_path,f"{self.plate['name']}.json")
+        out_json = os.path.join(output_path,f"Index.json")
         log.info(f"[+] Saving JSON to : {out_json}")
         
         d = {

@@ -8,21 +8,24 @@ process prepare_manifest {
     input:
         tuple val(plate), val(index_xml)
     output:
-        path "manifest.tsv"
+        path "manifest.tsv", emit: manifest
+        tuple path("Index.xml"), path("Index.json"), path("acquisition_info.txt"), emit: metadata
     script:
         cmd =
         """
         python $params.tg_core_dir/parse_xml.py \
-        --input_file $index_xml \
+        --input_file '$index_xml' \
         --output_path ./ \
         --to_manifest
+        
+        cp '$index_xml' ./
         """
         
         // Only keep the first few lines 
         if (params.rn_testmode) {
             cmd += 
             """
-            head -n 3 manifest.tsv > tmp
+            head -n 10 manifest.tsv > tmp
             mv tmp manifest.tsv
             """
         }
@@ -265,7 +268,7 @@ workflow stage {
         //manifest.view()
         
         if (params.rn_manifest_well == null) {
-            manifests_in = prepare_manifest(manifest)
+            manifests_in = prepare_manifest(manifest).manifest
         } else {
             manifests_in = Channel.from(params.rn_manifest_well)
         }

@@ -36,11 +36,17 @@ def main(input_file, output_path, wells):
             rows.append(row)
             cols.append(col)
             
-    # Retrieve the channel names to add to the OME metadata
+    # Retrieve the channel names to add to the OME metadata    
+    # Channel info
     if pe_reader.pe_index.channels is not None:
         channel_names = [f"ch{channel['id']} - {channel['name']}" for channel in pe_reader.pe_index.channels]
+        i = 0
+        for channel in pe_reader.pe_index.channels:
+            i+=1
     else:
         channel_names = None
+        
+    # ZYX pixel sizes
     resolution=pe_reader.pixel_sizes
 
     if resolution is not None:
@@ -48,10 +54,12 @@ def main(input_file, output_path, wells):
     else:
         physical_pixel_sizes=None
 
+        
     # AICS writer
     writer = tglow_io.AICSImageWriter(output_path,
                                         channel_names=channel_names,
                                         physical_pixel_sizes=physical_pixel_sizes)
+                                            
     
     # Loop over the selected wells
     for row, col in zip(rows, cols):

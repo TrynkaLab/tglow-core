@@ -29,7 +29,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Parse Perkin Elmer index XML file to JSON file')
     parser.add_argument('--input_file', type=str, required=False, help='Path to the PE Index file')
     parser.add_argument('--output_path', type=str, required=True, help='Path to the output directory where to storer the JSON file')
-    parser.add_argument('--to_manifest', required=False, action='store_true', default=False, help='Store the output as a well,plate,index csv file')
+    parser.add_argument('--to_manifest', required=False, action='store_true', default=False, help='Store the output as a <well> <plate> <index> tsv file')
     
     try:
        args = parser.parse_args()
@@ -41,6 +41,43 @@ if __name__ == '__main__':
     
     if args.to_manifest:
         pe_data.write_manifest(args.output_path)
+        pe_data.save(args.output_path)
+        
+        
+        # Channel info
+        info_file=open(f"{args.output_path}/acquisition_info.txt", 'w')
+        
+        info_file.write("# Channel list:\n")
+        if pe_data.channels is not None:
+            
+            i = 0
+            info_file.write(f"index\tpe_id\tname\tnew_name\tresolution_zyx\n")
+            for channel in pe_data.channels:
+            
+                res=channel['size']
+                res = (len(pe_data.planes), res[1], res[0])
+            
+                info_file.write(f"{i}\t{channel['id']}\t{channel['name']}\tch{channel['id']} - {channel['name']}\t{res}\n")
+                i+=1
+        else:
+            channel_names = None
+            info_file.write("None detected\n")
+            
+        info_file.write("\n\n")
+        # ZYX pixel sizes
+        resolution = pe_data.estimate_pixel_sizes()
+
+        info_file.write("\n# Pixel sizes: \n")
+        if resolution is not None:
+            info_file.write(f"ZYX: {resolution}\n")
+            info_file.write(f"Estimated anisotropy: {resolution[0] / resolution[1]}\n")
+        else:
+            physical_pixel_sizes=None
+            info_file.write("None detected\n")
+                    
+        info_file.flush()
+        info_file.close() 
+        
     else:
         pe_data.save(args.output_path)
 
