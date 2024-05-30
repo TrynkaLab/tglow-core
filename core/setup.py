@@ -1,5 +1,7 @@
 """A setuptools-based script for installing the tglow-core."""
 
+# To update requirements.txt, in bash run pipreqs ./; mv requirements.txt libs/
+
 import os
 from setuptools import find_packages, setup
 
