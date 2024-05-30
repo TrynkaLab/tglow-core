@@ -147,6 +147,54 @@ Make a copy of the templates to the location where you want to run, and edit eac
 
 # Running the pipline (nextflow)
 
+## Quick explanation
+
+Install as indicated above
+
+Adjust the required configurations either in a config file or on the nextflow command (see nettflow docs for more detaills). See nextflow/nextflow.config for available parameters.
+
+prepare a manifest.tsv with one line per plate:
+```
+plate	index_xml	channels	bp_channels	cp_nucl_channel cp_cell_channel
+```
+- plate: The exact plate name in the export
+- index_xml: path the perkin elmer (or Martin's version) index xml file
+- channels: list of available channels
+- bp_channels: channels to run basicpy for
+- cp_nucl_channel:optional channel for nuclei segmentation
+- cp_cell_channel: cellpose channel for cell segmentation
+
+
+First stage the data so its accesible on the lustre
+
+```
+OUTPUT=./output
+
+nextflow run tglow.nf \
+-profile lsf \
+-w ${OUTPUT}/workdir \
+-resume \
+-entry stage \
+--rn_manifest manifest.tsv \
+--rn_publish_dir ${OUTPUT}/results \
+--rn_image_dir ${OUTPUT}/results/images
+```
+
+After tata is stached into rn_image_dir run the pipeline
+```
+OUTPUT=./output
+
+nextflow run tglow.nf \
+-profile lsf \
+-w ${OUTPUT}/workdir \
+-resume \
+-entry run_pipeline \
+--rn_manifest manifest.tsv \
+--rn_publish_dir ${OUTPUT}/results \
+--rn_image_dir ${OUTPUT}/results/images
+```
+
+## Long explanation
 The nextflow pipline runs in two stages. Some of it is not done through fully "proper" nextflow, as nextflow is very storage heavy and can easily store redundant copies of data which is not great for imaging. 
 
 Hence most processes rely on the storeDir option which serves as a permanent cache between runs. Keep in mind that as long as nextflow finds the files in this storeDir, processes are NOT re-run, so you will have to remove them manually if you want to re-do some steps! This is the case for the stageing of the raw images, the deconvolution, registration and basicpy. This is not "proper" nextflow, but it made the most sense in this case. Many of the processes rely on eachother yet don't have a natural  a > b > c structure but represent a complicated tree. 
@@ -171,4 +219,5 @@ that tells the pipeline where the data lives, and which channels are which and h
 
 - stage image folders from iRODS bacup instead of PE export
 - Deconvolution
+- Detailled description of parameters
 
