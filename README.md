@@ -2,6 +2,9 @@
 
 Main repo for the TeamTrynka imaging pipelines. Still very much a work in progress, more documentation to follow when things mature.
 
+<br>
+<br>
+
 # Repo structure
 
 - cellprofiler: cellprofiler pipelines for specific instances (projects/datasets)
@@ -11,6 +14,9 @@ Main repo for the TeamTrynka imaging pipelines. Still very much a work in progre
 - nextflow: nextflow pipeline
 - r-core: R functions for analyzing the output features
 - templates: template scripts implementing the old bash based pipeline (2d)
+
+<br>
+<br>
 
 # Workflows (nextflow)
 
@@ -31,11 +37,12 @@ Processes:
 2. Registration (pystackreg) [optional]: parallelized on the well level (all fields). Only registration matrices are saved, no images are stored
 3. Cellpose: parallelized on the well level (all fields), runs on GPU. If registering, currently only runs on the reference plate. Must run a cell segmentation, can optionally provide nucleus channel as well.
 4. TBD deconvonvelution: Will spin out another copy of the data, runs on GPU
-5. cellprofiler: 
-    a. Stage the files into a cellprofiler compatable format and apply flatfields and registration if applicable
-    b. run feature extraction
+5. feature extraction / cellprofiler: 
+    1. Stage the files into a cellprofiler compatable format, apply flatfields, bring together imaging cylces and apply registration if applicable
+    2. run feature extraction (cellprofiler) or other custom script
 
-
+<br>
+<br>
 
 
 # Install instructions (nextflow)
