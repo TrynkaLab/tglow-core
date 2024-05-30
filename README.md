@@ -14,7 +14,7 @@ Main repo for the TeamTrynka imaging pipelines. Still very much a work in progre
 
 # Workflows (nextflow)
 
-1. stage:
+## 1. stage:
 
 This workflow takes a perkin elmer (currently only works for phenix) index xml and stages the files into a plate/row/col/field.ome.tiff file structure. IO is handled through AICSImageio, channel names and pixel sizes are extracted from the index.xml and set as metadata items in the ome tiff. Some additional files are staged for reproducabillity and ease of reading channel orders etc. This output is also intended to be backed up to iRODS
 
@@ -22,8 +22,7 @@ Proccess:
 1. Create a manifest with the wells to run to re-use later as a nextflow channel
 2. Read the files from /nfs and save directly into the above format
 
-
-2. run_pipeline:
+## 2. run_pipeline:
 
 This takes as input the images produced during staging and then runs the following processes.
 
@@ -35,6 +34,8 @@ Processes:
 5. cellprofiler: 
     a. Stage the files into a cellprofiler compatable format and apply flatfields and registration if applicable
     b. run feature extraction
+
+
 
 
 # Install instructions (nextflow)
@@ -55,7 +56,7 @@ Check core/lib/requirements_cellprofiler.txt for the cellprofiler enviroment
 
 ### tglow enviroment
 
-Dependencies (check requirements.txt)
+Dependencies (check core/lib/requirements.txt)
 - python 3.10
 - cellpose 3
 - cuda 12
@@ -70,23 +71,27 @@ Dependencies (check requirements.txt)
 
 Create a new conda enviroment
 
+```
 conda create -n tglow python==3.10
 conda activate tglow
-
+```
 
 Clone the repo into a suitable install dir, then:
 
+```
 git clone <this repo>
 cd <this repo>/core
 pip install .
+```
 
 To enable GPU install the GPU version of pytorch, following their instructions. I had more luck with the pip install
 then the conda version
 
 If you want to be able to edit the python package, install with:
 
+```
 pip install -e .
-
+```
 Keep track of the install path of the conda enviroment, as this will need to be provided to nextflow
 
 
@@ -104,24 +109,28 @@ Dependencies (check requirements_cellprofiler.txt)
 
 
 Deactivate the previous conda environments (twice to make sure)
-
+```
 conda deactivate
 conda deactivate
-
+```
 Create the cellprofiler environment:
-
+```
 conda create -n cellprofiler python==3.8
-
+```
 open core/setup.py and edit the following line:
 
+```
 requirement_path = f"{lib_folder}/lib/requirements.txt"
+```
 to
+
+```
 requirement_path = f"{lib_folder}/lib/requirements_cellprofiler.txt"
-
+```
 then run:
-
+```
 pip install ./
-
+```
 Keep track of the install path of the conda enviroment, as this will need to be provided to nextflow
 
 
@@ -139,17 +148,20 @@ Parallelization is done on the per well level to not overload the system with 20
 
 The first workflow involves staging the data from an Harmony export on NFS. This is done with the -entry stage
 
+```
 nextflow <path/to/tglow.nf> -entry stage <params>
+```
 
 There are a bunch of configurations to be set, have a look at the nextflow.config for detaills. In general, you make a manifest in the following form
 
+```
 <plate> <index.xml> <channels> <basicpy_channels> <cellpose_nucleus> <cellpose_cell>
-
+```
 that tells the pipeline where the data lives, and which channels are which and how to apply them. The file can run multiple plates at the same time by adding more lines.
 
 
 # TODO items:
 
 - stage image folders from iRODS bacup instead of PE export
-- 
+- Deconvolution
 
