@@ -86,19 +86,24 @@ class IndexedImageReader:
         self.plate_order = list(self.index.keys())        
         plate = self.plate_order[0]
         
-        self.row_order = list(self.index[plate].keys())        
+        self.row_order = list(self.index[plate].keys())  
+        self.row_order.sort(key=int)
         row = list(self.index[plate].keys())[0]
         
-        self.col_order = list(self.index[plate][row].keys())        
+        self.col_order = list(self.index[plate][row].keys())
+        self.col_order.sort(key=int)        
         col = self.col_order[0]
         
-        self.field_order = list(self.index[plate][row][col].keys())        
+        self.field_order = list(self.index[plate][row][col].keys())
+        self.field_order.sort(key=int)    
         field = self.field_order[0]
-        
+    
         self.channel_order = list(self.index[plate][row][col][field].keys())
+        self.channel_order.sort(key=input)
         channel = self.channel_order[0]
         
         self.plane_order = list(self.index[plate][row][col][field][channel].keys())
+        self.plane_order.sort(key=int)
         plane = self.plane_order[0]
 
         img = tifffile.imread(self.index[plate][row][col][field][channel][plane])
@@ -151,6 +156,32 @@ class IndexedImageReader:
         
         return stack
     
+    def get_filenames(self, query) -> list:
+        """Get the filenames associated with an image query in the order they are read"""
+        
+        if not isinstance(query, ImageQuery):
+            raise TypeError("Query is not of type ImageQuery")
+                
+        channels=[]
+        if (query.channel is None):
+            channels = self.get_channel_order()
+        else:
+            channels = [query.channel]
+                
+        planes=[]
+        if (query.plane is None):
+            planes = self.get_plane_order()
+        else:
+            planes = [query.plane]
+        
+        filenames=[]
+        
+        for channel in range(len(channels)):
+            for plane in range(len(planes)):
+                filenames.append(os.path.basename(self.index[query.plate][query.row][query.col][query.field][channels[channel]][planes[plane]]))
+        
+        return filenames
+    
     def get_channel_order(self) -> list:
         return self.channel_order
 
@@ -179,7 +210,7 @@ class PerkinElmerRawReader(IndexedImageReader):
             index[plate][str(file['row'])][str(file['col'])][str(file['field'])][str(file['channel'])][str(file['plane'])] = f"{self.path}/{file['file']}"
             
         return default_to_regular(index)
-
+        
 
 class AICSImageReader():
     """Reads image data from ome tiffs in a folder structure /plate/row/col/field.ome.tiff where field.ome.tiff is a CZYX array"""
@@ -341,7 +372,7 @@ class AICSImageWriter():
         self.physical_pixel_sizes=physical_pixel_sizes
         
     
-    def write_stack(self, stack, query, channel_names=None, physical_pixel_sizes=None, image_name=None):
+    def write_stack(self, stack, query, channel_names=None, physical_pixel_sizes=None, image_names=None):
         """Write a CZYX array into the folder structure"""
 
         if not isinstance(query, ImageQuery):
@@ -369,7 +400,7 @@ class AICSImageWriter():
         
         log.debug(f"pps: {physical_pixel_sizes}")
         log.debug(f"cnn: {channel_names}")
-        log.debug(f"imn: {image_name}")
+        log.debug(f"imn: {image_names}")
         log.debug(f"shp: {stack.shape}")
 
 
@@ -378,5 +409,5 @@ class AICSImageWriter():
           dim_order="CZYX",
           channel_names=channel_names,
           physical_pixel_sizes=physical_pixel_sizes,
-          image_name=image_name
+          image_names=image_names
           )
