@@ -184,7 +184,18 @@ nextflow run tglow.nf \
 --rn_image_dir ${OUTPUT}/results/images
 ```
 
-After the data is staged into rn_image_dir run the pipeline
+After the data is staged into rn_image_dir, build the cellprofiler pipeline. To find the channel order check the images/plate/aquistion_info.txt file which contains a channel list and voxel resolutions. 
+
+
+For extracting the nucleus masks configure pattern as such:
+`^(?P<field>\d+)_(?P<mask_type>.*_mask)_d\d+_ch\d+_cp_masks.tif`
+
+Then for the channels configure an additonal pattern only matching to ome.tiff files not containing the _masks keyword
+`^(?P<field>\d+)_(?P<plate>.*)_(?P<well>\w\d\d)_ch(?P<channel>\d+)`
+
+Channel order of registation channels is explained below in the registration section.
+
+Then run the pipeline
 ```
 OUTPUT=./output
 
@@ -211,6 +222,9 @@ ref_plate   5   qry_plate1,qry_plate2   3,4
 - reference_channel: 1 based index of channel to use in registering (nucleus)
 - query_plates: comma seperated list of plate names to register against reference
 - query_channels: comma seperated list of 1 based channel indices of channel to register (nucleus)
+
+
+IMPORTANT: this assumes that all wells in the ref_plate manifest are available in the query plate. Currently this is NOT automatched. To fix this you can go into the image folder and override the manifest.tsv to only include the wells that overlap between the plates. It's suggested to make a copy of the original to avoid having to re-run the stage workflow.
 
 If this is provided, in downstream tasks (cellprofiler/feature extraction) data is treated as one plate and the query plates are treated as extra channels, with their indices increasing seqeuntially in the order specified in the manifest. 
 
@@ -240,7 +254,10 @@ that tells the pipeline where the data lives, and which channels are which and h
 
 # TODO items:
 
-- stage image folders from iRODS bacup instead of PE export
+- Stage image folders from iRODS bacup instead of PE export
 - Deconvolution
+- Automatic overlap of manifests when registering, currently need to make sure all ref plate wells are present in query plates
+- Update docs
 - Detailled description of parameters
+
 

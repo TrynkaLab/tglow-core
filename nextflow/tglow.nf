@@ -195,7 +195,7 @@ process cellprofiler {
     input:
         tuple val(plate), val(key), val(well), val(row), val(col), path(nucl_masks), path(cell_masks), val(merge_plates), path(registration), val(basicpy_string)
     output:
-        path "*.tsv"
+        path "$plate/$row/$col/*.tsv"
     script:
         // Outputs the cp files into ./images
         cmd = 
@@ -232,29 +232,31 @@ process cellprofiler {
         }
          
          
-        cmd += "\ntouch done.tsv"     
-        cmd
+        //cmd += "\ntouch done.tsv"     
+        //cmd
 
         // Run cell profiler
-        //cmd +=
-        //"""
-        //# Run cellprofiler
-        //cellprofiler \
-        //-c \
-        //-r \
-        //-o ./ \
-        //-i ./images/$plate/$row/$col \
-        //--plugins-directory $params.cpr_plugins \
-        //"""
-        //
-        //if (params.rn_max_project) {
-        //   cmd += "-p $params.cpr_pipeline_2d"
-        //} else {
-        //    cmd += "-p $params.cpr_pipeline_3d"
-        //}
+        cmd +=
+        """
+        # Run cellprofiler
+        cellprofiler \
+        -c \
+        -r \
+        -o ./$plate/$row/$col \
+        -i ./images/$plate/$row/$col\
+        """
         
+        if (params.cpr_plugins) {
+            cmd += " --plugins-directory $params.cpr_plugins"
+        }
+    
+        if (params.rn_max_project) {
+           cmd += "-p $params.cpr_pipeline_2d"
+        } else {
+            cmd += "-p $params.cpr_pipeline_3d"
+        }      
         
-        //cmd
+        cmd
 }
 
 // Workflow to stage the data from NFS to lustre
