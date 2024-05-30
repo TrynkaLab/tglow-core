@@ -180,7 +180,7 @@ nextflow run tglow.nf \
 --rn_image_dir ${OUTPUT}/results/images
 ```
 
-After tata is stached into rn_image_dir run the pipeline
+After the data is staged into rn_image_dir run the pipeline
 ```
 OUTPUT=./output
 
@@ -193,6 +193,25 @@ nextflow run tglow.nf \
 --rn_publish_dir ${OUTPUT}/results \
 --rn_image_dir ${OUTPUT}/results/images
 ```
+
+## Registering multiple cycles of imaging
+
+To register imaging cycles additionally provide a registration manifest which links plates together. This should have the form:
+
+```
+reference_plate	reference_channel	query_plates	query_channels
+ref_plate   5   qry_plate1,qry_plate2   3,4
+```
+
+- reference_plate: Plate name of reference plate
+- reference_channel: 1 based index of channel to use in registering (nucleus)
+- query_plates: comma seperated list of plate names to register against reference
+- query_channels: comma seperated list of 1 based channel indices of channel to register (nucleus)
+
+If this is provided, in downstream tasks (cellprofiler/feature extraction) data is treated as one plate and the query plates are treated as extra channels, with their indices increasing seqeuntially in the order specified in the manifest. 
+
+Query plates must be provided in the manifest.tsv!
+Currently cellpose is only run on reference plates, even if the channels are provided in the registration manifest. If needed, will update cellpose to run on the registered data so other cycle channels can be used in segmenting.
 
 ## Long explanation
 The nextflow pipline runs in two stages. Some of it is not done through fully "proper" nextflow, as nextflow is very storage heavy and can easily store redundant copies of data which is not great for imaging. 
