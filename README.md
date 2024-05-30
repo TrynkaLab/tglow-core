@@ -156,6 +156,10 @@ Adjust the required configurations either in a config file or on the nextflow co
 prepare a manifest.tsv with one line per plate:
 ```
 plate	index_xml	channels	bp_channels	cp_nucl_channel cp_cell_channel
+ref_plate   index.xml   1,2,4,5 3,5 5   2  
+qry_plate1  index.xml  2,3,4 none   none    none
+qry_plate2  index.xml  3,4 3,4 3   4  
+
 ```
 - plate: The exact plate name in the export
 - index_xml: path the perkin elmer (or Martin's version) index xml file
