@@ -20,7 +20,7 @@ log.setLevel(logging.DEBUG)
 
 class CellposeRunner():
     
-    def __init__(self, path, plate, output, model, nucl_channel, other_channel, diameter, diameter_nucl, do_3d, anisotropy=None):
+    def __init__(self, path, plate, output, model, nucl_channel, other_channel, diameter, diameter_nucl, do_3d, anisotropy=None, min_cell_area=None, min_nucl_area=None):
         
         self.path=path
         self.plate=plate
@@ -37,10 +37,24 @@ class CellposeRunner():
         self.diameter_nucl=diameter_nucl
         
         # Minimum object area in pixels
-        self.min_size= math.pi * ((self.diameter/4) ** 2)
         
-        if self.diameter_nucl is not None:
-            self.min_size_nucl= math.pi * ((self.diameter_nucl/4) ** 2)
+        if min_cell_area is None:
+            if self.do_3d:
+                self.min_size = 4 * math.pi * (self.diameter/6)**2
+            else:
+                self.min_size = 2 * math.pi * ((self.diameter/6))
+        else:
+            self.min_size=min_cell_area
+        
+        if min_cell_area is None:
+            if self.diameter_nucl is not None:
+                
+                if self.do_3d:
+                    self.min_size_nucl = 4 * math.pi * (self.diameter_nucl/6)**2
+                else:
+                    self.min_size_nucl = 2 * math.pi * ((self.diameter_nucl/6))
+        else:
+            self.min_size_nucl=min_cell_area
 
         
     def __init_reader__(self):
@@ -161,6 +175,9 @@ if __name__ == "__main__":
     parser.add_argument('--anisotropy', help="Ratio between z / xy resolution", default=None)
     parser.add_argument('--diameter', help="Estimated cellsize", default=None)
     parser.add_argument('--diameter_nucl', help="Estimated nucleus size", default=None)
+    parser.add_argument('--min_cell_area', help="Minimal area or volume of cells. Defaults to area of circle or volume of sphere 1/6th of --diameter", default=None)
+    parser.add_argument('--min_nucl_area', help="Minimal area of volume nuclei. Defaults to area of circle or volume of sphere 1/6th of --diameter_nucl", default=None)
+
     parser.add_argument('--no_3d', help="Don't run in 3d mode", action='store_true', default=False)
 
     args = parser.parse_args()

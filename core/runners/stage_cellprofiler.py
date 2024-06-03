@@ -30,8 +30,14 @@ class MergeAndAlign:
         self.input=args.input
         self.output=args.output
         self.write_zstack=not args.no_zstack
+        self.write_max_projection_onefile=args.max_project_onefile
         self.write_max_projection=args.max_project
         self.uint32=args.uint32
+        
+        
+        if (self.write_max_projection):
+            self.write_zstack=False
+            log.info("Writing max projection as individual files, not saving z-stacks")
         
         # Plates to process
         self.plates=args.plate
@@ -168,12 +174,21 @@ class MergeAndAlign:
                         tifffile.imwrite(cur_out, merged, shape=merged.shape, imagej=True, photometric='MINISBLACK', metadata={'axes': 'ZYX'})
                         
                     # Store max projection accross the first axis (Z) for current channel 
-                    if (self.write_max_projection):
+                    if (self.write_max_projection | self.write_max_projection_onefile):
                         mp = np.max(merged, axis=0)
-                        max_projection.append(mp)
+                        
+                        if (self.write_max_projection):
+                            log.info(f"{plate} well: {well} channel: {str(channel)} field: {field}, max projection")
+                        
+                            # Final output filename for channel
+                            cur_out = f"{out_dir_final}/{field}_{plate}_{well}_ch{str(channel)}.tiff"
+                            tifffile.imwrite(cur_out, mp, shape=mp.shape, imagej=True, metadata={'axes': 'YX'})        
+                                
+                        else:
+                            max_projection.append(mp)
 
                 # Write the max projection, CYX
-                if (self.write_max_projection):
+                if (self.write_max_projection_onefile):
                     log.info(f"{plate} well: {well} field: {field} max projection")
                     cur_out = f"{out_dir_final}/{plate}_{well}_{field}_max_projection.tiff"
                     
@@ -303,7 +318,8 @@ if __name__ == "__main__":
     parser.add_argument('-p','--plate', help='Subfolder in raw dir to process', nargs='+')
     parser.add_argument('-m','--plate_merge', help='Plates to align using pystackreg (e.g. multiple cycles of the same plate). Output will be added as additional channels.', nargs='+', default=None)
     parser.add_argument('--no_zstack', help="Do not output one tiff file per channel containing all z-stacks", action='store_true', default=False)
-    parser.add_argument('--max_project', help="Output max projection in parallel to per channel tiffs", action='store_true', default=False)
+    parser.add_argument('--max_project', help="Output max projection as per channel YX tiffs", action='store_true', default=False)
+    parser.add_argument('--max_project_onefile', help="Output max projection one CYX tiff. Specify --no_zstack to skip per channel tiffs.", action='store_true', default=False)
     parser.add_argument('--registration_dir', help="Path to registration root storing <plate>/<row>/<col>/<field>.pickle", default=None)
     parser.add_argument('--fields', help='Fields to use. <field #1> | [<field #1> <field #2> <field #n>]', nargs='+', default=None)
     #parser.add_argument('--planes', help='Z planes to use. <plane #1> | [<plane #1> <plane #2> <plane #n>]', nargs='+', default=None)

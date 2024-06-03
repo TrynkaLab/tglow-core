@@ -99,7 +99,7 @@ class IndexedImageReader:
         field = self.field_order[0]
     
         self.channel_order = list(self.index[plate][row][col][field].keys())
-        self.channel_order.sort(key=input)
+        self.channel_order.sort(key=int)
         channel = self.channel_order[0]
         
         self.plane_order = list(self.index[plate][row][col][field][channel].keys())

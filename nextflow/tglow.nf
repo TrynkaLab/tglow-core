@@ -25,7 +25,7 @@ process prepare_manifest {
         if (params.rn_testmode) {
             cmd += 
             """
-            head -n 10 manifest.tsv > tmp
+            head -n 3 manifest.tsv > tmp
             mv tmp manifest.tsv
             """
         }
@@ -43,7 +43,9 @@ process fetch_raw {
     storeDir "${params.rn_image_dir}"
 
     input:
-        tuple val(well), val(row), val(col), val(plate), val(index_xml)
+        //tuple val(well), val(row), val(col), val(plate), val(index_xml)
+        tuple val(key), val(plate), val(well), val(row), val(col), val(index_xml)
+
     output:
         path "$plate/$row/$col"
     script:
@@ -108,11 +110,11 @@ process cellpose {
     input:
         tuple val(plate), val(well), val(row), val(col), val(nucl_channel), val(cell_channel)
     output:
-        path "${plate}/${row}/${col}/*_cell_mask*.tif", emit: cell_masks
-        path "${plate}/${row}/${col}/*_nucl_mask*.tif", emit: nucl_masks, optional: true
-        tuple val(plate), val(well), val(row), val(col), path("${plate}/${row}/${col}/*_cell_mask*.tif"), path("${plate}/${row}/${col}/*_nucl_mask*.tif"), emit: cellpose_out
-        //tuple val(plate), val(well), val(row), val(col), val("dave"), val("john"), emit: cellpose_out
-
+        //path "${plate}/${row}/${col}/*_cell_mask*.tif", emit: cell_masks
+        //path("${plate}/${row}/${col}/*_nucl_mask*.tif"), emit: nucl_masks, optional: true
+                //tuple val(plate), val(well), val(row), val(col), val("dave"), val("john"), emit: cellpose_out
+        tuple val(plate), val(well), val(row), val(col), path("${plate}/${row}/${col}/*_cell_mask*_ch${cell_channel}*.tif"), path("${plate}/${row}/${col}/*_nucl_mask*_ch${nucl_channel}*.tif"), emit: cellpose_out //, path("${plate}/${row}/${col}/*_nucl_mask*.tif"), emit: cellpose_out
+        
     script:
         cmd =
         """
@@ -127,7 +129,7 @@ process cellpose {
         --model $params.cp_model\
         """
         
-        if (nucl_channel > 0) {
+        if (nucl_channel >= 0) {
             cmd +=
             """ \
             --nucl_channel $nucl_channel  \
@@ -135,10 +137,31 @@ process cellpose {
             """
         }    
         
+        if (params.cp_min_cell_area) {
+            cmd += " --min_cell_area $params.cp_min_cell_area"
+        }
+        
+        if (params.cp_min_nucl_area) {
+            cmd += " --min_nucl_area $params.cp_min_nucl_area"
+        }
+        
         if (params.rn_max_project) {
             cmd += " --no_3d"
         }
         
+        // Add a fake nucleus channel because nextflow doesn't play nicely with 
+        // tuples and mulptiple input files, otherwise making sure wells and channels are 
+        // matched turns into a pain
+        // If its stupid and it works, it is not stupid, hopefully in future, nextflow
+        // will deal better with optional files or just accept null for file objects
+        if (nucl_channel < 0) {
+            cmd += 
+            """
+            
+            touch ${plate}/${row}/${col}/NO_NUCL_MASK_nucl_mask_ch${nucl_channel}_dummy.tif
+            """
+        
+        }
         cmd
 
 }
@@ -193,9 +216,9 @@ process cellprofiler {
     publishDir "$params.rn_publish_dir/cellprofiler", mode: 'move'
     
     input:
-        tuple val(plate), val(key), val(well), val(row), val(col), path(nucl_masks), path(cell_masks), val(merge_plates), path(registration), val(basicpy_string)
+        tuple val(plate), val(key), val(well), val(row), val(col), path(cell_masks), path(nucl_masks), val(merge_plates), path(registration), val(basicpy_string)
     output:
-        path "$plate/$row/$col/*.tsv"
+        path "features/$plate/$row/$col/*.tsv"
     script:
         // Outputs the cp files into ./images
         cmd = 
@@ -212,7 +235,7 @@ process cellprofiler {
             cmd += " --plate_merge " + merge_plates
         }
         
-        if (registration) {
+        if (registration.name != "NO_REGISTRATION") {
             cmd += " --registration_dir ./"
         }
                 
@@ -227,7 +250,7 @@ process cellprofiler {
         // Stage the masks so cellprofiler can access them
         cmd += "\nmv " + cell_masks.join(" ") + " ./images/$plate/$row/$col/"
         
-        if (nucl_masks != null) {
+        if (!nucl_masks[0].name.startsWith("NO_NUCL_MASK")) {
             cmd += "\nmv " + nucl_masks.join(" ") + " ./images/$plate/$row/$col/"
         }
          
@@ -242,7 +265,7 @@ process cellprofiler {
         cellprofiler \
         -c \
         -r \
-        -o ./$plate/$row/$col \
+        -o ./features/$plate/$row/$col \
         -i ./images/$plate/$row/$col\
         """
         
@@ -251,9 +274,9 @@ process cellprofiler {
         }
     
         if (params.rn_max_project) {
-           cmd += "-p $params.cpr_pipeline_2d"
+           cmd += " -p $params.cpr_pipeline_2d"
         } else {
-            cmd += "-p $params.cpr_pipeline_3d"
+            cmd += " -p $params.cpr_pipeline_3d"
         }      
         
         cmd
@@ -269,31 +292,50 @@ workflow stage {
         
         //manifest.view()
         
+        // Read in the manifest
         if (params.rn_manifest_well == null) {
             manifests_in = prepare_manifest(manifest).manifest
         } else {
             manifests_in = Channel.from(params.rn_manifest_well)
         }
-
+        
         //manifests_in.view()
         well_channel = manifests_in.flatMap{ manifest_path -> file(manifest_path).splitCsv(header:["well", "row", "col", "plate", "index_xml"], sep:"\t") }
         
-        // -> Channel.fromPath(manifest_path)
-        //.splitCsv(header:false, sep:"\t")
-        //.map( row -> tuple(val(row[0]), val(row[1]), val[row[2]]))
-       // }
+        
+        // tuple val(key), val(plate), val(well), val(row), val(col), val(index_xml)
+        well_channel = well_channel.map(row -> {tuple(
+            row.plate + ":" + row.well,
+            row.plate,
+            row.well,
+            row.row,
+            row.col,
+            row.index_xml
+        )})
+        
+
+        // Filter blacklist
+        if (params.rn_blacklist != null) {
+
+            // Read blacklist as list of plate:well
+            blacklist=[]
+            
+            new File(params.rn_blacklist).splitEachLine("\t") {fields ->
+                blacklist.add(fields[0] + ":" + fields[1])
+            }
+            
+            log.info("Blacklist consists of items: " + blacklist)
+            
+            well_channel=well_channel.filter(row -> {
+                row[0] !in blacklist       
+            })
+            
+        }
         
         //well_channel.view()
         
         fetch_raw(well_channel)
         
-        // Read manifest
-        //manifest = Channel.fromPath(params.manifest)
-        //    .splitCsv(header:true)
-        //    .map { row -> tuple(row.well, row.plate, row.index_xml)}
-        
-        // Fetch raw data
-        //fetch_raw(manifest)       
 }
 
 def convertChannelType(String input) {
@@ -363,8 +405,30 @@ workflow run_pipeline {
             manifests_in = Channel.from(params.rn_manifest_well)
         }
 
-        well_channel = manifests_in.flatMap{ manifest_path -> file(manifest_path).splitCsv(header:["well", "row", "col", "plate", "index_xml"], sep:"\t") }
+        well_channel = manifests_in
+        .flatMap{ manifest_path -> file(manifest_path)
+                                    .splitCsv(header:["well", "row", "col", "plate", "index_xml"], sep:"\t") }
+                                    
+                                    
+        
+        // Filter blacklist
+        if (params.rn_blacklist != null) {
 
+            // Read blacklist as list of plate:well
+            blacklist=[]
+            
+            new File(params.rn_blacklist).splitEachLine("\t") {fields ->
+                blacklist.add(fields[0] + ":" + fields[1])
+            }
+            
+            log.info("Blacklist consists of items: " + blacklist)
+            
+            well_channel=well_channel.filter(row -> {
+                (row.plate + ":" + row.well) !in blacklist       
+            })
+            
+        }                                
+    
         // Re-order the well channel for later merging
         well_in = well_channel.map{ row -> tuple(
             row.plate,
@@ -445,9 +509,18 @@ workflow run_pipeline {
         
         // Run cellpose
         //cellpose_in.view()    
-        cellpose_out = cellpose(cellpose_in).cellpose_out
+        cellpose_out = cellpose(cellpose_in)
         
-
+        //cellpose_out = cellpose_results.cellpose_out
+        
+        // Grab nucleus masks, if empty return NO_NUCL_MASK
+        //nucl_masks = cellpose_results.nucl_masks.ifEmpty{file('NO_NUCL_MASK')}
+        
+        // Convert the channel to a value channel if its empty so it is properly run
+        //if (nucl_masks.first().name == 'NO_NUCL_MASK') {
+        //    nucl_masks = nucl_masks.first()
+        // }
+                
         //------------------------------------------------------------
         // Deconvelute
         //deconvelute_out = deconvelute(well_in)
@@ -465,8 +538,8 @@ workflow run_pipeline {
                     row[1], // well
                     row[2], // row
                     row[3], // col
-                    row[4], // row[4], nucl masks
-                    row[5] // row[5], cell masks
+                    row[4], // cell masks
+                    row[5]  // nucl masks
             )}
                 
             // Add registration
@@ -487,10 +560,10 @@ workflow run_pipeline {
                     row[2], // well
                     row[3], // row
                     row[4], // col
-                    row[5], // nucl masks
-                    row[6], // cell masks,
+                    row[5], // cell masks,
+                    row[6], // nucl masks,
                     null,   // merge plates
-                    null,   // registration path
+                    file('NO_REGISTRATION'),   // registration path
                 )}
             }
             
@@ -525,17 +598,14 @@ workflow run_pipeline {
                         row[2], // well
                         row[3], // row
                         row[4], // col
-                        row[5], // nucl masks
-                        row[6], // cell masks
+                        row[5], // cell masks
+                        row[6], // nucl masks
                         row[7], // merge plates
                         row[8], // registration path
                         null    // basicpy models       
                 )}
                 
             }
-        
-            // Input channel:
-            // plate, key, well, row, col, cellpose_nucl, cellpose_cell, merge_plates, registration, basicpy
 
             //cellprofiler_in.view()
             cellprofiler_out = cellprofiler(cellprofiler_in)

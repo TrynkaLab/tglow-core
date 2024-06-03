@@ -169,7 +169,7 @@ qry_plate2  index.xml  3,4 3,4 3   4
 - cp_cell_channel: cellpose channel for cell segmentation
 
 
-First stage the data so its accesible on the lustre
+First stage the data so its accesible on the lustre. IMPORTANT, as it needs access to /nfs to stage the index xml, run this through a job in the imaging queue, otherwise it will crash.
 
 ```
 OUTPUT=./output
@@ -185,7 +185,6 @@ nextflow run tglow.nf \
 ```
 
 After the data is staged into rn_image_dir, build the cellprofiler pipeline. To find the channel order check the images/plate/aquistion_info.txt file which contains a channel list and voxel resolutions. 
-
 
 For extracting the nucleus masks configure pattern as such:
 `^(?P<field>\d+)_(?P<mask_type>.*_mask)_d\d+_ch\d+_cp_masks.tif`
@@ -209,6 +208,16 @@ nextflow run tglow.nf \
 --rn_image_dir ${OUTPUT}/results/images
 ```
 
+
+## Blacklisting troublesome wells
+
+Sometimes wells might have issues or have different aquisition parameters (e.q. number of channels or planes). As currently the pipeline assumes all image stacks have the same shape, this is not supported. Wells which not match can be excluded in two ways. This is also usefull for excluding single stain controls which don't make sense to run through the pipeline.
+
+1. Edit the manifest.tsv in the `rn_image_dir` of the plate to remove the well
+2. Specify `--rn_blacklist` which is  a tsv file with header `plate<tab>well` and then specifying a plate well combination, one per line, to exclude from the run. 
+
+I reccomend the blacklist prior to staging, especially if many wells need to be blacklisted
+
 ## Registering multiple cycles of imaging
 
 To register imaging cycles additionally provide a registration manifest which links plates together. This should have the form:
@@ -224,19 +233,28 @@ ref_plate   5   qry_plate1,qry_plate2   3,4
 - query_channels: comma seperated list of 1 based channel indices of channel to register (nucleus)
 
 
-IMPORTANT: this assumes that all wells in the ref_plate manifest are available in the query plate. Currently this is NOT automatched. To fix this you can go into the image folder and override the manifest.tsv to only include the wells that overlap between the plates. It's suggested to make a copy of the original to avoid having to re-run the stage workflow.
+IMPORTANT: this assumes that all wells in the ref_plate manifest are available in the query plate. Currently this is NOT automatched. To fix this you can:
+
+1. Go into the image folder and override the manifest.tsv to only include the wells that overlap between the plates. It's suggested to make a copy of the original to avoid having to re-run the stage workflow.
+2. Supply the wells that DO NOT match to `--rn_blacklist`. See detaills above
 
 If this is provided, in downstream tasks (cellprofiler/feature extraction) data is treated as one plate and the query plates are treated as extra channels, with their indices increasing seqeuntially in the order specified in the manifest. 
 
 Query plates must be provided in the manifest.tsv!
 Currently cellpose is only run on reference plates, even if the channels are provided in the registration manifest. If needed, will update cellpose to run on the registered data so other cycle channels can be used in segmenting.
 
-## Long explanation
+## Extra detaills
 The nextflow pipline runs in two stages. Some of it is not done through fully "proper" nextflow, as nextflow is very storage heavy and can easily store redundant copies of data which is not great for imaging. 
 
-Hence most processes rely on the storeDir option which serves as a permanent cache between runs. Keep in mind that as long as nextflow finds the files in this storeDir, processes are NOT re-run, so you will have to remove them manually if you want to re-do some steps! This is the case for the stageing of the raw images, the deconvolution, registration and basicpy. This is not "proper" nextflow, but it made the most sense in this case. Many of the processes rely on eachother yet don't have a natural  a > b > c structure but represent a complicated tree. 
+Hence most processes rely on the storeDir option which serves as a permanent cache between runs. Keep in mind that as long as nextflow finds the files in this storeDir, processes are NOT re-run, so you will have to remove them manually if you want to re-do some steps! This is the case for the stageing of the raw images, the deconvolution, registration and basicpy. This is not "proper" nextflow in the sense everything is localized to the workdir, but it made the most sense in this case as:
+1. We wanted to save on as much redundant stroing of images as possible (and automated cleanup of workdirs is not currently available in nextflow)
+2. Many of the processes rely on eachother yet don't have a natural  a > b > c structure but represent a complicated tree. 
 
 Parallelization is done on the per well level to not overload the system with 20 second jobs wasting a lot of time on overheads (loading conda, initializing python etc). This makes some of the processes implicitly assume all the fields are supposed to be run. Given the same well always has the same number of fields this should work fine. But nextflow itself is not aware of the fields! This pipeline doesn't currently support seperate fields between cycles, but this should ideally never happen anyway. If it does happen, first stage the data, then remove or rename the fields so they match manually in the storeDir, then it should work fine.
+
+ 
+Note to self: If the pipeline does need to be 'field aware' most of the runners implement the --fields argument, as does the io reader, so it should be trivial to implement should the need arise by adding a field to the plate level manifest configuring which fields to run.
+
 
 The first workflow involves staging the data from an Harmony export on NFS. This is done with the -entry stage
 
