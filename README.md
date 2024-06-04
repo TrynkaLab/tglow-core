@@ -86,15 +86,15 @@ conda activate tglow
 Clone the repo into a suitable install dir, then:
 
 ```
-git clone <this repo>
-cd <this repo>/core
+git clone https://gitlab.internal.sanger.ac.uk/TrynkaLab/tglow-core
+cd tglow-core/core
 pip install .
 ```
 
 To enable GPU install the GPU version of pytorch, following their instructions. I had more luck with the pip install
-then the conda version
+then the conda version.
 
-If you want to be able to edit the python package, install with:
+IF you want to be able to edit the python package without the need to re-install, install with:
 
 ```
 pip install -e .

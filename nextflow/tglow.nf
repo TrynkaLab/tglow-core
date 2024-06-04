@@ -54,6 +54,8 @@ process fetch_raw {
         --input_file '$index_xml' \
         --output_path ./ \
         --well $well
+        
+        md5sum $plate/$row/$col/*.ome.tiff > $plate/$row/$col/CHECKSUMS.txt
         """         
 }
 

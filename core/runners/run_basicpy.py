@@ -4,6 +4,7 @@ import tifffile
 import string
 import argparse
 import random
+import time
 import numpy as np
 import logging
 from basicpy import BaSiC
@@ -94,6 +95,7 @@ class BasicpyTrainer():
         training_imgs = []
         i=0
 
+        start_time = time.time()
         while i < self.merge_n:
             i=i+1
             # Select subset of images
@@ -138,7 +140,8 @@ class BasicpyTrainer():
                 # This gave issues as it puts an array of arrays, giving the wrong shape
                 #training_imgs.append(training_imgs_tmp)
                 training_imgs=training_imgs_tmp
-                
+        
+        log.info(f"Reading took { round(((time.time() - start_time)/60), 2)} minutes")
         # Convert into 3d numpy array
         merged = np.array(training_imgs)
         log.info(f"Read training files into array of shape {str(merged.shape)}")

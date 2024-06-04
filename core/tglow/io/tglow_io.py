@@ -10,6 +10,9 @@ import string
 
 from aicsimageio import AICSImage
 from aicsimageio.writers import OmeTiffWriter
+from aicsimageio.readers.ome_tiff_reader import OmeTiffReader
+
+
 
 from tglow.io.image_query import ImageQuery
 from tglow.io.perkin_elmer_parser import PerkinElmerParser
@@ -334,23 +337,25 @@ class AICSImageReader():
         if not isinstance(query, ImageQuery):
             raise TypeError("Query is not of type ImageQuery")    
         
-        img = AICSImage(f"{self.path}/{query.plate}/{ImageQuery.ID_TO_ROW[query.row]}/{query.col}/{query.field}.ome.tiff")
-        
+        #img = AICSImage(f"{self.path}/{query.plate}/{ImageQuery.ID_TO_ROW[query.row]}/{query.col}/{query.field}.ome.tiff")
+        img = OmeTiffReader(f"{self.path}/{query.plate}/{ImageQuery.ID_TO_ROW[query.row]}/{query.col}/{query.field}.ome.tiff")
+
         if (query.channel is None) and (query.plane is None):
             # returns 4D CZYX numpy array
-            return img.get_image_data("CZYX", T=0) 
+            return img.get_image_data("CZYX", T=0)
         
         if (query.channel is not None) and (query.plane is None):
             # returns 3D ZYX numpy array
-            return img.get_image_data("ZYX", T=0, C=int(query.channel)) 
-        
+            return img.get_image_data("ZYX", T=0, C=int(query.channel))
+
         if (query.channel is None) and (query.plane is not None):
             # returns 3D CYX numpy array
             return img.get_image_data("CYX", T=0, Z=int(query.plane))
-        
+
         if (query.channel is not None) and (query.plane is not None):
             # returns 2D YX numpy array
             return img.get_image_data("YX", T=0, Z=int(query.plane), C=int(query.channel))
+            #return img.get_image_dask_data("YX", T=0, Z=int(query.plane), C=int(query.channel)).compute()
 
     def read_stack(self, query) -> np.ndarray:
         """Read an image stack into a CZYX array"""
