@@ -171,11 +171,11 @@ tglow.plot.img <- function(img, main="img", marker.add=T, marker.x=NULL, marker.
   if (marker.add) {
     
     if (is.null(marker.x)) {
-      marker.x <- round(image_info(img)$width/2)
+      marker.x <- round(dim(img)[1]/2)
     }
     
     if (is.null(marker.y)) {
-      marker.y <- round(image_info(img)$height/2)
+      marker.y <- round(dim(img)[2]/2)
     }
     
     marker.x 
@@ -643,4 +643,80 @@ tglow.plot.simple.hm <- function(data, cellsize=-1, cellwidth=12, cellheight=12,
              border=border,
              ...)
   }
+}
+
+
+#-------------------------------------------------------------------------------
+#' Convert a hex code to RGB
+#' @param hex String with hex code
+#'
+#' @returns a vector of length 3 with relative scaling between RGB channels between 0 and 1
+hex.to.rgb <- function(hex) {
+  
+  if (startsWith(hex, "#")) {
+    hex <- gsub("^#", "", hex)
+  }
+  
+  rgb.hex <- strsplit(hex, "(?<=..)", perl = TRUE)[[1]]
+  rgb <- sapply(rgb.hex, strtoi, base = 16)
+  rgb <- rgb/255
+  
+  names(rgb) <- c("r", "g", "b")
+  return(rgb)
+}
+
+#-------------------------------------------------------------------------------
+#' Apply a relative scaling of RGB values to a 3d array
+#' 3rd dimension is assumed to contain the color channels.
+#' If input is grey, returns the image in the color
+#' @param image 3d array with 3rd dimension as rgb
+#' @param rgb vector of length 3 with scaling factors for rgb channels
+#'
+#' @returns The scaled image
+tglow.apply.color <- function(image, rgb) {
+  image[,,1] <-image[,,1]*rgb[1]
+  image[,,2] <-image[,,2]*rgb[2]
+  image[,,3] <-image[,,3]*rgb[3]
+  
+  return(image)
+}
+
+#-------------------------------------------------------------------------------
+#' Combine a series of grey rgb images, appy a color shift and average their
+#' RGB values at each pixel to create a composite image.
+#' @param images list of RGB EBImages
+#' @param colors list of hex codes to color shift, must be same length as images
+#'
+#' @returns A single RGB images representing the average color values
+tglow.composite.image <- function(images, colors) {
+  
+  if(length(images) != length(colors)) {
+    stop("Images and suplied colors don't match")
+  }
+  
+  i <- 1
+  comp <- NULL
+  
+  for (image in images) {
+    
+    if (length(dim(image)) != 2) {
+      stop(paste0("Dimensions of image not equal to 2, is it greyscale. At index ", i))
+    }
+    
+    rgb <- hex.to.rgb(colors[i])
+    img <- channel(image, mode="rgb")
+    
+    if (is.null(comp)) {
+      # Create an RGB image from greyscale
+      comp <- apply.color(img, rgb)
+    } else {
+      comp <- comp + apply.color(img, rgb)
+    }
+    
+    i <- i+1
+  }
+  
+  comp <- comp/length(images)
+  
+  return(comp)
 }

@@ -14,16 +14,16 @@ export NXF_OPTS="-Xms14G -Xmx14G -Dnxf.pool.maxThreads=2000"
 # Nextflow version, change depending on installation you use
 export NXF_VER=23.10.0
  
-# Singularity cache folder to use
+# Singularity cache folder to use (not currently used)
 export NXF_SINGULARITY_CACHEDIR=/lustre/scratch123/hgi/mdt1/projects/healthy_imm_expr/resources/nextflow/cache/singularity
  
 # Path to nextflow file
 NF_FILE=/software/teamtrynka/installs/tglow-core/nextflow/tglow.nf
  
 # Output
-OUTPUT=/lustre/scratch125/humgen/projects/cell_activation_tc/projects/pipeline_dev/cd_testplate
+OUTPUT="<OUTPUT>"
  
-MANIFEST="/software/teamtrynka/installs/tglow-core/testing/maniffest_cd_testplate.tsv"
+MANIFEST="<MANIFEST>"
 
 WORKFLOW="$1"
 
