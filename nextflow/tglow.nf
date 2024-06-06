@@ -64,7 +64,7 @@ process fetch_raw {
 process basicpy {
     label 'himem'
     conda params.tg_conda_env
-    publishDir "${params.rn_publish_dir}/basicpy/${plate}", mode: 'copy'
+    storeDir "${params.rn_publish_dir}/basicpy/${plate}" //, mode: 'copy'
 
     input:
         tuple val(plate), val(img_channel)
