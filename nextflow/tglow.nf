@@ -37,6 +37,7 @@ process prepare_manifest {
 // Fetches raw data from NFS and recodes into new OME file structure
 // imaging queue
 process fetch_raw {
+    scratch true
     label 'small_img'
     conda params.tg_conda_env
     //storeDir "$params.rn_image_dir/$plate/$row/$col", mode: 'move'
@@ -212,7 +213,7 @@ process register {
 // Run a cellprofiler run
 // regular queue
 process cellprofiler {
-    //scratch true
+    scratch true
     label 'normal'
     conda params.cpr_conda_env
     publishDir "$params.rn_publish_dir/cellprofiler", mode: 'move'

@@ -651,7 +651,7 @@ tglow.plot.simple.hm <- function(data, cellsize=-1, cellwidth=12, cellheight=12,
 #' @param hex String with hex code
 #'
 #' @returns a vector of length 3 with relative scaling between RGB channels between 0 and 1
-hex.to.rgb <- function(hex) {
+tglow.hex.to.rgb <- function(hex) {
   
   if (startsWith(hex, "#")) {
     hex <- gsub("^#", "", hex)
@@ -703,14 +703,14 @@ tglow.composite.image <- function(images, colors) {
       stop(paste0("Dimensions of image not equal to 2, is it greyscale. At index ", i))
     }
     
-    rgb <- hex.to.rgb(colors[i])
+    rgb <- tglow.hex.to.rgb(colors[i])
     img <- channel(image, mode="rgb")
     
     if (is.null(comp)) {
       # Create an RGB image from greyscale
-      comp <- apply.color(img, rgb)
+      comp <- tglow.apply.color(img, rgb)
     } else {
-      comp <- comp + apply.color(img, rgb)
+      comp <- comp + tglow.apply.color(img, rgb)
     }
     
     i <- i+1

@@ -28,6 +28,11 @@ Proccess:
 1. Create a manifest with the wells to run to re-use later as a nextflow channel
 2. Read the files from /nfs and save directly into the above format
 
+
+### Known issues
+
+Sometimes upon running the pipeline for the first time, the run crashes, with 'file not found' exceptions on the Index.xml files. I have no clue why this happens, maybe its something with the specific node in the imaging queue not having the mount, but usually when I re-run without changing, it seems to run fine the 2nd time. I have had wierd issues like this with other NF pipelines in the past, so think its more a NF issue then anything else.
+
 ## 2. run_pipeline:
 
 This takes as input the images produced during staging and then runs the following processes.
