@@ -10,9 +10,9 @@ import logging
 from basicpy import BaSiC
 from matplotlib import pyplot as plt
 from scipy import ndimage as ndi
-from tglow.io.tglow_io import AICSImageReader
+from tglow.io.tglow_io import AICSImageReader, BlacklistReader
 from tglow.utils.tglow_utils import float_to_16bit_unint
-
+from skimage.filters import threshold_otsu
 
 # Plot results from basicpy fit
 def plot_basic_results(basic, filename):
@@ -66,7 +66,7 @@ log.setLevel(logging.DEBUG)
 
 class BasicpyTrainer():
     
-    def __init__(self, path, output_dir, output_prefix,  channel,  nimg, merge_n, tune, fit_darkfield, all_planes=False, max_project=False, plates=None, fields=None, planes=None):
+    def __init__(self, path, output_dir, output_prefix,  channel,  nimg, merge_n, tune, fit_darkfield, all_planes=False, max_project=False, plates=None, fields=None, planes=None, threshold=False, autosegment=False, plot=False, blacklist=None):
         
         self.path=path
         self.channel=channel
@@ -88,14 +88,30 @@ class BasicpyTrainer():
         if self.max_project:
             self.all_planes=True
             
+        self.threshold=threshold
+        
+        self.autosegment=autosegment
+        
+        self.plot=plot
+        
+        self.blacklist = blacklist
+            
     def train(self):
         
+        # Read the placklist
+        if self.blacklist is not None:
+            bl_reader = BlacklistReader(self.blacklist)
+            bl = bl_reader.read_blacklist()
+        else:
+            bl = None
+            
         # Init the image reader
-        ac_reader = AICSImageReader(self.path, self.plates, self.fields)
+        ac_reader = AICSImageReader(self.path, self.plates, self.fields, bl)
         training_imgs = []
         i=0
 
         start_time = time.time()
+   
         while i < self.merge_n:
             i=i+1
             # Select subset of images
@@ -140,23 +156,52 @@ class BasicpyTrainer():
                 # This gave issues as it puts an array of arrays, giving the wrong shape
                 #training_imgs.append(training_imgs_tmp)
                 training_imgs=training_imgs_tmp
+              
+        log.info(f"Reading took { round(((time.time() - start_time)/60), 2)} minutes")  
         
-        log.info(f"Reading took { round(((time.time() - start_time)/60), 2)} minutes")
+        # Gather the weights
+        if self.threshold:
+            weights=[]
+            k=0
+            for img in training_imgs:
+                threshold = threshold_otsu(img)
+                log.debug(f"Threshold for img {k} = {threshold}")
+                weights.append(img>threshold)
+                k = k+1
+            weights = np.array(weights)
+        else:
+            weights = None
+    
         # Convert into 3d numpy array
         merged = np.array(training_imgs)
         log.info(f"Read training files into array of shape {str(merged.shape)}")
 
+        # Set background pixels to zero
+        #if self.threshold:
+        #    log.info("Calculating Otsu threshold prior to running basicpy")
+        #    thresh = threshold_otsu(merged)
+        #    #log.info(f"Setting pixels with value < {thresh} to zero")
+        #    #merged[merged < thresh] = 0   
+        #    weights=merged > thresh
+        #else:
+        #    weights=None
+        
         # Init basicpy object with autosegmentation (needed for 3d)
-        basic = BaSiC(get_darkfield=self.fit_darkfield, smoothness_flatfield=1, autosegment=False)
+        basic = BaSiC(get_darkfield=self.fit_darkfield,
+                      smoothness_flatfield=1,
+                      autosegment=self.autosegment,
+                      max_iterations=1000)
 
         # Optimze parameters
         if self.tune:
             log.info("Tuning model")
-            basic.autotune(merged)
+            basic.autotune(merged,
+                           fitting_weight=weights)
         
         # Fit parameters
         log.info("Fitting model")
-        basic.fit(merged)
+        basic.fit(merged,
+                fitting_weight=weights)
         
         # Save output
         out = f"{self.output_dir}/{self.output_prefix}_ch{str(self.channel)}"
@@ -173,11 +218,16 @@ class BasicpyTrainer():
         merged_corrected = float_to_16bit_unint(merged_corrected)
         
         # Plot results
-        plot_basic_results(basic, out + "/flat_and_darkfield.png")
-        plot_before_after_mp(np.max(merged, axis=0), np.max(merged_corrected, axis=0), filename=out + "/all_imgs_max_proj_pre_post.png")
-        plot_before_after(merged, merged_corrected, 0, filename=out + "/img0_pre_post.png")
-        plot_before_after(merged, merged_corrected, 1, filename=out + "/img1_pre_post.png")
-                
+        
+        if self.plot:
+            plot_basic_results(basic, out + "/flat_and_darkfield.png")
+            plot_before_after_mp(np.max(merged, axis=0), np.max(merged_corrected, axis=0), filename=out + "/all_imgs_max_proj_pre_post.png")
+            plot_before_after(merged, merged_corrected, 0, filename=out + "/img0_pre_post.png")
+            plot_before_after(merged, merged_corrected, 1, filename=out + "/img1_pre_post.png")
+            plot_before_after(merged, merged_corrected, 2, filename=out + "/img2_pre_post.png")
+            plot_before_after(merged, merged_corrected, 3, filename=out + "/img3_pre_post.png")
+            plot_before_after(merged, merged_corrected, 4, filename=out + "/img4_pre_post.png")
+
 
 if __name__ == "__main__":
     
@@ -185,6 +235,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train a basicpy model on raw HCI images orgnaized into <plate>/<row>/<col>/<field>.ome.tiff stacks with CZYX")
     parser.add_argument('-i','--input', help='Base dir to input organized <plate>/<row>/<col>/<field>.ome.tiff')
     parser.add_argument('-o','--output', help='Output folder')
+    parser.add_argument('--blacklist', help='TSV file with "<plate>  <well>" on each row descrbing what to ignore')
     parser.add_argument('--output_prefix', help='Output prefix name', default="basicpy")
     parser.add_argument('--no_tune', help="Do not tune the basicpy model", action='store_true', default=False)
     parser.add_argument('--fit_darkfield', help="Fit the darkfield component. For tglow not reccomended", action='store_true', default=False)
@@ -197,6 +248,10 @@ if __name__ == "__main__":
     #parser.add_argument('--gpu', help="Use the GPU", action='store_true', default=False)
     parser.add_argument('--all_planes', help="Instead of randomly picking one plane for a stack, use them all", action='store_true', default=False)
     parser.add_argument('--max_project', help="Calculate flatfields on max projections. Automatically activates --all_planes", action='store_true', default=False)
+    parser.add_argument('--threshold', help="Use Otsu threshold to set fitting_weight from basicpy to 1 for foreground and 0 for background. This is NOT the basicpy autothreshold", action='store_true', default=False)
+    parser.add_argument('--autosegment', help="Enable basicpy autosegment option", action='store_true', default=False)
+    parser.add_argument('--plot', help="Plot basicpy results", action='store_true', default=False)
+
     args = parser.parse_args()
     
     input=args.input
@@ -226,6 +281,11 @@ if __name__ == "__main__":
     print("merge n:\t" + str(args.merge_n))
     print("darkfied:\t" + str(args.fit_darkfield))
     print("max project:\t" + str(args.max_project))
+    print("threshold:\t" + str(args.threshold))
+    print("autosegment:\t" + str(args.autosegment))
+    print("plot:\t" + str(args.plot))
+    print("blacklist:\t" + str(args.blacklist))
+
     print("-----------------------------------------------------------")
 
     trainer = BasicpyTrainer(path=input,
@@ -239,7 +299,11 @@ if __name__ == "__main__":
                             all_planes=args.all_planes,
                             max_project=args.max_project,
                             plates=plates,
-                            fields=args.fields)
+                            fields=args.fields,
+                            threshold=args.threshold,
+                            autosegment=args.autosegment,
+                            plot=args.plot,
+                            blacklist=args.blacklist)
                             
     trainer.train()
 

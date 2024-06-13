@@ -7,11 +7,11 @@ import os
 import glob
 import logging
 import string
+import csv
 
 from aicsimageio import AICSImage
 from aicsimageio.writers import OmeTiffWriter
 from aicsimageio.readers.ome_tiff_reader import OmeTiffReader
-
 
 
 from tglow.io.image_query import ImageQuery
@@ -195,13 +195,13 @@ class IndexedImageReader:
 class PerkinElmerRawReader(IndexedImageReader):
     """Read raw image data from a PerkinElmer export or from a re-formatted output as long as it has an index file"""
     
-    def __init__(self, index_xml, path, dtype=np.uint16, resolution=None) -> None:        
+    def __init__(self, index_xml, path, dtype=np.uint16, resolution=None,  plates_filter=None, fields_filter=None, blacklist=None) -> None:        
         self.pe_index=PerkinElmerParser(index_xml)
         self.path = path
         self.pixel_sizes=self.pe_index.estimate_pixel_sizes()
         log.info(f"Estimated pixels sizes to be {self.pixel_sizes} um (z, y, x)")
         cur_index = self.__convert_pe_index__()
-        super().__init__(index=cur_index, path=path, dtype=dtype, resolution=resolution)
+        super().__init__(index=cur_index, path=path, dtype=dtype, resolution=resolution,  plates_filter=plates_filter, fields_filter=fields_filter)
     
 
     def __convert_pe_index__(self):
@@ -218,10 +218,16 @@ class PerkinElmerRawReader(IndexedImageReader):
 class AICSImageReader():
     """Reads image data from ome tiffs in a folder structure /plate/row/col/field.ome.tiff where field.ome.tiff is a CZYX array"""
     
-    def __init__(self, path, plates_filter=None, fields_filter=None, dtype=np.uint16, resolution=None) -> None:
+    def __init__(self, path, plates_filter=None, fields_filter=None, blacklist=None, dtype=np.uint16, resolution=None) -> None:
         self.path = path
         self.plates_filter = plates_filter
         self.fields_filter = fields_filter
+        
+        if blacklist is None:
+            self.blacklist = []
+        else:
+            self.blacklist = blacklist
+        
         self.__build_index__()
 
     def _deprecated_build_index__(self):
@@ -262,6 +268,7 @@ class AICSImageReader():
 
         nplates=0
         nwells=0
+        nwells_blacklisted=0
         wells={}
         
         self.plates = set(plates)
@@ -289,8 +296,16 @@ class AICSImageReader():
                 self.cols[plate].update(cols)
                 
                 for col in cols:
+                    well = f"{row}{col.zfill(2)}"
+                
+                    # Ignore blacklisted wells in indexing
+                    if f"{plate}:{well}" in self.blacklist:
+                        nwells_blacklisted=nwells_blacklisted+1
+                        continue
+                        
+                        
                     nwells = nwells+1
-                    wells[plate].add(f"{row}{col.zfill(2)}")
+                    wells[plate].add(well)
                     
                     fields = glob.glob(f"{self.path}/{plate}/{row}/{col}/*.ome.tiff")
                     fields = [os.path.normpath(f) for f in fields]
@@ -318,7 +333,7 @@ class AICSImageReader():
         #if self.fields_filter is not None:
         #    self.fields = [field for field in self.fields if field in self.fields_filter]
         
-        log.info(f"Indexed {nwells} wells in {nplates} plates")
+        log.info(f"Indexed {nwells} wells in {nplates} plates, skipped {nwells_blacklisted} blacklisted wells")
         log.info(plates)
         log.info(wells)
     
@@ -342,20 +357,23 @@ class AICSImageReader():
 
         if (query.channel is None) and (query.plane is None):
             # returns 4D CZYX numpy array
-            return img.get_image_data("CZYX", T=0)
-        
+            #return img.get_image_data("CZYX", T=0)
+            return img.get_image_dask_data("CZYX", T=0).compute()
+
         if (query.channel is not None) and (query.plane is None):
             # returns 3D ZYX numpy array
-            return img.get_image_data("ZYX", T=0, C=int(query.channel))
+            #return img.get_image_data("ZYX", T=0, C=int(query.channel))
+            return img.get_image_dask_data("ZYX", T=0, C=int(query.channel)).compute()
 
         if (query.channel is None) and (query.plane is not None):
             # returns 3D CYX numpy array
-            return img.get_image_data("CYX", T=0, Z=int(query.plane))
+            #return img.get_image_data("CYX", T=0, Z=int(query.plane))
+            return img.get_image_data("CYX", T=0, Z=int(query.plane)).compute()
 
         if (query.channel is not None) and (query.plane is not None):
             # returns 2D YX numpy array
-            return img.get_image_data("YX", T=0, Z=int(query.plane), C=int(query.channel))
-            #return img.get_image_dask_data("YX", T=0, Z=int(query.plane), C=int(query.channel)).compute()
+            #return img.get_image_data("YX", T=0, Z=int(query.plane), C=int(query.channel))
+            return img.get_image_dask_data("YX", T=0, Z=int(query.plane), C=int(query.channel)).compute()
 
     def read_stack(self, query) -> np.ndarray:
         """Read an image stack into a CZYX array"""
@@ -366,7 +384,26 @@ class AICSImageReader():
         query.plane = None
         
         return self.read_image(query)
+
+
+class BlacklistReader():
+    
+    def __init__(self, path, sep="\t"):
+        self.path=path
+        self.sep=sep
         
+    def read_blacklist(self, separator=":"):
+    
+        result = []
+        with open(self.path, 'r') as file:
+            reader = csv.reader(file, delimiter=self.sep)
+            for row in reader:
+                if len(row) >= 2:
+                    combined_string = separator.join(row[:2])
+                    result.append(combined_string)
+        return result
+
+
         
 class AICSImageWriter():
     """Writes image data from ome tiffs in a folder structure /plate/row/col/field.ome.tiff where field.ome.tiff is a CZYX array"""

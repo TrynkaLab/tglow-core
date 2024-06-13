@@ -81,6 +81,7 @@ process basicpy {
         --output_prefix $plate \
         --plate $plate \
         --nimg $params.bp_nimg \
+        --plot \
         --channel $img_channel\
         """
         
@@ -99,6 +100,10 @@ process basicpy {
         if (params.bp_all_planes) {
             cmd += " --all_planes"
         }   
+        
+        if (params.rn_blacklist) {
+            cmd += " --blacklist $params.rn_blacklist"
+        }
             
         cmd
 }
@@ -173,12 +178,12 @@ process cellpose {
 process register {
     label 'normal'
     conda params.tg_conda_env
-    publishDir "${params.rn_publish_dir}/registration/"
-
+    //publishDir "${params.rn_publish_dir}/registration/", mode: "copy"
+    storeDir "${params.rn_publish_dir}/registration/"
     input:
         tuple val(plate), val(well), val(row), val(col), val(reference_channel), val(query_plates), val(query_channels)
     output:
-        tuple val(plate), val(well), val(row), val(col), val(query_plates), path(plate)
+        tuple val(plate), val(well), val(row), val(col), val(query_plates), path("${plate}/${row}/${col}/*")
     script:
         cmd =
         """
@@ -249,8 +254,13 @@ process cellprofiler {
         if (params.rn_max_project) {
             cmd += " --max_project --no_zstack"
         }
+        
+        if (params.bp_threshold) {
+            cmd += " --threshold"
+        }
                 
-        // Stage the masks so cellprofiler can access them
+        // Stage the masks so cellprofiler can access them, 
+        // TODO: This is not very nextflow, but couldnt quickly figure out how to stage in a subfolder
         cmd += "\nmv " + cell_masks.join(" ") + " ./images/$plate/$row/$col/"
         
         if (!nucl_masks[0].name.startsWith("NO_NUCL_MASK")) {
