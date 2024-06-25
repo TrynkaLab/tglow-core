@@ -66,7 +66,7 @@ log.setLevel(logging.DEBUG)
 
 class BasicpyTrainer():
     
-    def __init__(self, path, output_dir, output_prefix,  channel,  nimg, merge_n, tune, fit_darkfield, all_planes=False, max_project=False, plates=None, fields=None, planes=None, threshold=False, autosegment=False, plot=False, blacklist=None):
+    def __init__(self, path, output_dir, output_prefix,  channel,  nimg, merge_n, tune, fit_darkfield, all_planes=False, max_project=False, plates=None, fields=None, planes=None, threshold=False, autosegment=False, plot=False, blacklist=None, pseudoreplicates=0):
         
         self.path=path
         self.channel=channel
@@ -95,6 +95,8 @@ class BasicpyTrainer():
         self.plot=plot
         
         self.blacklist = blacklist
+        
+        self.pseudoreplicates = pseudoreplicates
             
     def train(self):
         
@@ -111,17 +113,24 @@ class BasicpyTrainer():
         i=0
 
         start_time = time.time()
-   
-        while i < self.merge_n:
+        total_imgs = 0
+        
+        if self.pseudoreplicates > 0:
+            log.info(f"Pseudoreplicating {self.pseudoreplicates} compound images from {self.nimg} read images, with each compound image consisting of {self.merge_n} images")
+            sample_n = 1
+        else:
+            sample_n = self.merge_n
+        
+        while i < self.nimg:
             i=i+1
             # Select subset of images
             
             all_imgs = [x for v in ac_reader.images.values() for x in v]
-            merge_files = random.choices(all_imgs, k=self.nimg)
             
+            merge_files = random.choices(all_imgs, k=sample_n)
             stack_dims = ac_reader.get_img(all_imgs[0]).dims
             
-            log.info(f"Reading {len(merge_files)} randomly selected files")
+            #log.info(f"Reading {len(merge_files)} randomly selected files")
 
             # Loop over the raw tiffs and read them as a list of 2d numpy arrays
             j = 0
@@ -146,11 +155,12 @@ class BasicpyTrainer():
                     q.plane = rplane
                     img = ac_reader.read_image(q)
                     training_imgs_tmp.append(img)
-                log.debug(f"Read stack of {img.shape}")
-                j=j+1
+                log.debug(f"Read stack of {img.shape} [{total_imgs +1}/{len(merge_files) * self.nimg}]")
+                j += 1
+                total_imgs +=1
                 
             if self.merge_n > 1:
-                log.info(f"Merging  {str(self.nimg)} random images for training")
+                #log.info(f"Merging  {str(self.merge_n)} random images for training")
                 training_imgs.append(np.max(np.array(training_imgs_tmp), axis=0))
             else:
                 # This gave issues as it puts an array of arrays, giving the wrong shape
@@ -158,6 +168,20 @@ class BasicpyTrainer():
                 training_imgs=training_imgs_tmp
               
         log.info(f"Reading took { round(((time.time() - start_time)/60), 2)} minutes")  
+        
+        
+        # Generate pseudoreplicates
+        if self.pseudoreplicates > 0:
+            log.info(f"Creating {self.pseudoreplicates} pseudoreplicates from {self.nimg} images")
+            training_imgs_tmp=[]
+            
+            i = 0
+            while i < self.pseudoreplicates:
+                merge_files = random.choices(training_imgs, k=self.merge_n)
+                training_imgs_tmp.append(np.max(np.array(merge_files), axis=0))
+                i+=1
+            
+            training_imgs = training_imgs_tmp
         
         # Gather the weights
         if self.threshold:
@@ -188,15 +212,42 @@ class BasicpyTrainer():
         
         # Init basicpy object with autosegmentation (needed for 3d)
         basic = BaSiC(get_darkfield=self.fit_darkfield,
-                      smoothness_flatfield=1,
                       autosegment=self.autosegment,
-                      max_iterations=1000)
+                      working_size=128)
+
+
+        log.debug("Tuning parameters:")
+        log.debug(basic.resize_params)
+        log.debug(basic.working_size)
 
         # Optimze parameters
         if self.tune:
             log.info("Tuning model")
+
+            init_params = {"smoothness_flatfield": 2}
+            search_space = {"smoothness_flatfield": list(np.logspace(-0.5, 1.5, 15))}
+
+            if self.fit_darkfield:
+                init_params.update({
+                    "smoothness_darkfield":  1e-3, 
+                    "sparse_cost_darkfield":  1e-3
+                })
+                
+                search_space.update({
+                    "smoothness_darkfield":  list(np.logspace(-0.5, 1.5, 15)),
+                    "sparse_cost_darkfield":  list(np.logspace(-0.5, 1.5, 15))            
+                })
+            
+
             basic.autotune(merged,
-                           fitting_weight=weights)
+                           fitting_weight=weights,
+                           #n_iter=200,
+                           #histogram_qmin=0.05,
+                           #histogram_qmax=0.95,
+                           early_stop_torelance=1e-7,
+                           search_space=search_space,
+                           init_params=init_params,
+                           early_stop_n_iter_no_change=25)
         
         # Fit parameters
         log.info("Fitting model")
@@ -222,11 +273,16 @@ class BasicpyTrainer():
         if self.plot:
             plot_basic_results(basic, out + "/flat_and_darkfield.png")
             plot_before_after_mp(np.max(merged, axis=0), np.max(merged_corrected, axis=0), filename=out + "/all_imgs_max_proj_pre_post.png")
-            plot_before_after(merged, merged_corrected, 0, filename=out + "/img0_pre_post.png")
-            plot_before_after(merged, merged_corrected, 1, filename=out + "/img1_pre_post.png")
-            plot_before_after(merged, merged_corrected, 2, filename=out + "/img2_pre_post.png")
-            plot_before_after(merged, merged_corrected, 3, filename=out + "/img3_pre_post.png")
-            plot_before_after(merged, merged_corrected, 4, filename=out + "/img4_pre_post.png")
+            
+            # Plot before and after for first 5 images, or as many as are available
+            plot_max = 5
+            if merged_corrected.shape[0] < plot_max:
+                plot_max = merged_corrected.shape[0]
+            
+            i = 0
+            while i < plot_max:
+                plot_before_after(merged, merged_corrected, i, filename=out + f"/img{i}_pre_post.png")
+                i += 1
 
 
 if __name__ == "__main__":
@@ -239,16 +295,17 @@ if __name__ == "__main__":
     parser.add_argument('--output_prefix', help='Output prefix name', default="basicpy")
     parser.add_argument('--no_tune', help="Do not tune the basicpy model", action='store_true', default=False)
     parser.add_argument('--fit_darkfield', help="Fit the darkfield component. For tglow not reccomended", action='store_true', default=False)
-    parser.add_argument('--nimg', help="Number of random images to train on. If --merge_n is specified this is the number of images that are max projected into one. Sampled with replacement", default=None, required=True)
-    parser.add_argument('--merge_n', help="Number of times to max project random selection --nimg number of images. If > 1 basicpy is run on this number of max projected images.", default=1)
+    parser.add_argument('--nimg', help="Number of random images to train on. Sampled with replacement", default=None, required=True)
+    parser.add_argument('--merge_n', help="Number of images to combine into one --nimg times", default=1)
+    parser.add_argument('--pseudoreplicates', help="Number of pseudoreplicates to generate. Pseudoreplicate is a compound from --merge_n images samples from --nimg read images", default=0)
     parser.add_argument('-p','--plate', help='Plate to process', nargs='+')
     parser.add_argument('-c','--channel', help="Channel number to correct", required=True)
-    parser.add_argument('--fields', help='Fields to use', nargs='+', default=None)
-    parser.add_argument('--planes', help='Z planes to use', nargs='+', default=None)
+    parser.add_argument('--fields', help='Fields to use. Defaults to use all fields.', nargs='+', default=None)
+    #parser.add_argument('--planes', help='Z planes to use. Defaults to use all planes', nargs='+', default=None)
     #parser.add_argument('--gpu', help="Use the GPU", action='store_true', default=False)
     parser.add_argument('--all_planes', help="Instead of randomly picking one plane for a stack, use them all", action='store_true', default=False)
     parser.add_argument('--max_project', help="Calculate flatfields on max projections. Automatically activates --all_planes", action='store_true', default=False)
-    parser.add_argument('--threshold', help="Use Otsu threshold to set fitting_weight from basicpy to 1 for foreground and 0 for background. This is NOT the basicpy autothreshold", action='store_true', default=False)
+    parser.add_argument('--threshold', help="Use Otsu threshold to set fitting_weight from basicpy to 1 for foreground and 0 for background. This conceptually the inverse of the autosegmentation", action='store_true', default=False)
     parser.add_argument('--autosegment', help="Enable basicpy autosegment option", action='store_true', default=False)
     parser.add_argument('--plot', help="Plot basicpy results", action='store_true', default=False)
 
@@ -271,7 +328,7 @@ if __name__ == "__main__":
     print("-----------------------------------------------------------")
     print("Input plates:\t" + str(plates))
     print("Input fields:\t" + str(args.fields))
-    print("Input planes:\t" + str(args.planes))    
+    #print("Input planes:\t" + str(args.planes))    
     print("Input:\t\t" + input)
     print("Output:\t\t" + args.output)
     print("Output pre:\t" + args.output_prefix)
@@ -285,7 +342,7 @@ if __name__ == "__main__":
     print("autosegment:\t" + str(args.autosegment))
     print("plot:\t" + str(args.plot))
     print("blacklist:\t" + str(args.blacklist))
-
+    print("pseudoreplicates:\t" + str(args.pseudoreplicates))
     print("-----------------------------------------------------------")
 
     trainer = BasicpyTrainer(path=input,
@@ -303,7 +360,8 @@ if __name__ == "__main__":
                             threshold=args.threshold,
                             autosegment=args.autosegment,
                             plot=args.plot,
-                            blacklist=args.blacklist)
+                            blacklist=args.blacklist,
+                            pseudoreplicates=int(args.pseudoreplicates))
                             
     trainer.train()
 

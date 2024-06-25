@@ -69,6 +69,7 @@ process basicpy {
 
     input:
         tuple val(plate), val(img_channel)
+        path blacklist
     output:
         path "${plate}_ch${img_channel}", emit: basicpy_file_out
         tuple val(plate), val(img_channel),  path("${plate}_ch${img_channel}"), emit: basicpy_out       
@@ -97,13 +98,26 @@ process basicpy {
             cmd += " --merge_n $params.bp_merge_n"
         }
         
+        if (params.bp_pseudoreplicates) {
+            cmd += " --pseudoreplicates $params.bp_pseudoreplicates"
+        }
+        
         if (params.bp_all_planes) {
             cmd += " --all_planes"
         }   
         
-        if (params.rn_blacklist) {
-            cmd += " --blacklist $params.rn_blacklist"
+        if (params.bp_threshold) {
+            cmd += " --threshold"
         }
+        
+        if (params.bp_autosegment) {
+            cmd += " --autosegment"
+        }
+        
+        if (params.rn_blacklist) {
+            cmd += " --blacklist $blacklist"
+        }
+        
             
         cmd
 }
@@ -183,7 +197,7 @@ process register {
     input:
         tuple val(plate), val(well), val(row), val(col), val(reference_channel), val(query_plates), val(query_channels)
     output:
-        tuple val(plate), val(well), val(row), val(col), val(query_plates), path("${plate}/${row}/${col}/*")
+        tuple val(plate), val(well), val(row), val(col), val(query_plates), path("${plate}")//, path("${plate}/${row}/${col}/*")
     script:
         cmd =
         """
@@ -218,7 +232,7 @@ process register {
 // Run a cellprofiler run
 // regular queue
 process cellprofiler {
-    scratch true
+    scratch false
     label 'normal'
     conda params.cpr_conda_env
     publishDir "$params.rn_publish_dir/cellprofiler", mode: 'move'
@@ -245,6 +259,7 @@ process cellprofiler {
         
         if (registration.name != "NO_REGISTRATION") {
             cmd += " --registration_dir ./"
+            //cmd += " --registration_dir /lustre/scratch125/humgen/projects/cell_activation_tc/projects/DRUG_PERTURB/pipeline/results/registration/"
         }
                 
         if (basicpy_string) {
@@ -255,9 +270,6 @@ process cellprofiler {
             cmd += " --max_project --no_zstack"
         }
         
-        if (params.bp_threshold) {
-            cmd += " --threshold"
-        }
                 
         // Stage the masks so cellprofiler can access them, 
         // TODO: This is not very nextflow, but couldnt quickly figure out how to stage in a subfolder
@@ -377,10 +389,14 @@ workflow run_pipeline {
             
         //manifest.view()
 
+        // Blacklist channel, if missing just an empty channel
+        blacklist_channel = Channel.value(file(params.rn_blacklist))
+
         //------------------------------------------------------------
         // Run basicpy
         
         // If there is no global overide on basicpy channels, get them from manifest
+        
         if (params.bp_channels == null) {
             def csvFile = new File(params.rn_manifest)
             def csvData = csvFile.readLines()
@@ -399,6 +415,7 @@ workflow run_pipeline {
                 }
 
             }
+            
             basicpy_in = Channel.from(plate_channel)
         } else {
             basicpy_in = Channel.from(params.bp_channels)
@@ -406,24 +423,42 @@ workflow run_pipeline {
         
         //basicpy_channels = basicpy_channels.combine(manifest, by:0)
         //basicpy_in.view()
-        basicpy_out = basicpy(basicpy_in).basicpy_out
+        basicpy_out = basicpy(basicpy_in, blacklist_channel).basicpy_out
         
         //------------------------------------------------------------
         // Loop over previously generated manifests assuming stage has been run
         // Here we start to run the seqeuntial processes, the first part runs independently
         if (params.rn_manifest_well == null) {
             // code that reads paths available manfiests from previous stage
-            manifests_in = Channel.fromPath("${params.rn_image_dir}/*/manifest.tsv")
+            //manifests_in = Channel.fromPath("${params.rn_image_dir}/*/manifest.tsv")
+            
+            // Read which plates should be run, in the case the manifest has been edited
+            // after running stage to run not all plates
+            plates = []
+            new File(params.rn_manifest).eachLine{string, index -> 
+                if (index > 1) {
+                    plates.add(string.split("\t")[0])
+                }
+            }
+            
+            manifest_paths = []
+            
+            for (plate in plates) {
+                manifest_paths += "${params.rn_image_dir}/" + plate + "/manifest.tsv"
+            }
+            
+            log.info("Considering plate level manifests: " + manifest_paths)
+            manifests_in = Channel.from(manifest_paths)
+            
         } else {
             manifests_in = Channel.from(params.rn_manifest_well)
         }
-
-        well_channel = manifests_in
-        .flatMap{ manifest_path -> file(manifest_path)
-                                    .splitCsv(header:["well", "row", "col", "plate", "index_xml"], sep:"\t") }
-                                    
-                                    
         
+        // Construct the channel on the well level
+        well_channel = manifests_in
+            .flatMap{ manifest_path -> file(manifest_path)
+            .splitCsv(header:["well", "row", "col", "plate", "index_xml"], sep:"\t") }
+                                       
         // Filter blacklist
         if (params.rn_blacklist != null) {
 
@@ -434,7 +469,8 @@ workflow run_pipeline {
                 blacklist.add(fields[0] + ":" + fields[1])
             }
             
-            log.info("Blacklist consists of items: " + blacklist)
+            log.info("Blacklist consists of " + blacklist.size() + " items")
+            //log.info("Blacklist consists of items: " + blacklist)
             
             well_channel=well_channel.filter(row -> {
                 (row.plate + ":" + row.well) !in blacklist       
@@ -473,7 +509,6 @@ workflow run_pipeline {
         if (params.rn_manifest_registration != null) {
         
             //well_in.view()
-            
             manifest_registration = Channel
             .fromPath(params.rn_manifest_registration)
             .splitCsv(header:true, sep:"\t")
@@ -585,7 +620,7 @@ workflow run_pipeline {
             if (basicpy_out != null) {
             
                 // Concat to plate string format
-                basicpy_out = basicpy_out.map{ row -> tuple(
+                basicpy_tmp = basicpy_out.map{ row -> tuple(
                     row[0], // plate
                     row[0] + "_ch" + row[1] + "=" + row[2] // plate : channel = path
                 )}
@@ -594,15 +629,52 @@ workflow run_pipeline {
                 //basicpy_out=basicpy_out.concat(basicpy_out)
     
                 // Merge channel of same plates into single string 
-                basicpy_out = basicpy_out
+                basicpy_tmp = basicpy_tmp
                 .groupTuple(by:0)
                 .map{row -> tuple(
                     row[1].join(" "), //  plate_ch1=path1 plate_ch2=path2 plate_chX=pathX
                     row[0] //plate
                 )}
-                  
+                
+                // If there is a registration manifest, the basicpy output needs to be combined
+                // into a single channel with the reference plate as the key
+                if (params.rn_manifest_registration) {
+                
+                    // Read the manifest and turn it into a (qry, ref) channel
+                    qry_ref=[]
+                    new File(params.rn_manifest_registration).splitEachLine("\t") {fields ->
+                        ref = fields[0]  
+                        
+                        // Add the ref plate
+                        qry_ref.add([ref, ref])
+                        
+                        // Add the qry plates      
+                        qry_items = fields[2].split(",")
+                        for (qry in qry_items){
+                            qry_ref.add([qry, ref])
+                        }
+                    }
+                    
+                    qry_ref_channel = Channel.from(qry_ref).map{row -> tuple(
+                        row[1], // ref
+                        row[0] // qry
+                    )}
+                    
+                    // Add the reference plate to the basicpy output channel: (plate, bp_string, ref_plate)
+                    basicpy_tmp = basicpy_tmp.combine(qry_ref_channel, by:1)
+                    
+                    // Group together by reference plate and concat the bp strings
+                    basicpy_tmp = basicpy_tmp
+                    .groupTuple(by:2)
+                    .map{row -> tuple(
+                        row[1].join(" "), //  plate_ch1=path1 plate_ch2=path2 plate_chX=pathX
+                        row[2] //plate
+                    )}
+                    
+                }
+
                 // Append the basicpy models for a plate into that channel              
-                cellprofiler_in = cellprofiler_in.combine(basicpy_out, by: 1)
+                cellprofiler_in = cellprofiler_in.combine(basicpy_tmp, by: 1)
             } else {
             
                 cellprofiler_in = cellprofiler_in.map{row -> tuple(
@@ -619,8 +691,12 @@ workflow run_pipeline {
                 )}
                 
             }
+            
+            if (params.rn_testmode) {
+                cellprofiler_in = cellprofiler_in.take(3)
+                //cellprofiler_in.view()
+            }
 
-            //cellprofiler_in.view()
             cellprofiler_out = cellprofiler(cellprofiler_in)
         
         }

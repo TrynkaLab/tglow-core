@@ -104,6 +104,8 @@ class MergeAndAlign:
         # Loop over possible plates
         for plate in self.plates:
         
+            channel_index = self.get_bp_channel_keys(plate)
+        
             row, col = ImageQuery.well_id_to_index(well)
             out_dir_final= f"{self.output}/{plate}/{ImageQuery.ID_TO_ROW[str(row)]}/{col}"
             
@@ -155,8 +157,8 @@ class MergeAndAlign:
                     cur_out = f"{out_dir_final}/{field}_{plate}_{well}_ch{str(channel)}.tiff"      
                 
                     # If flatfields are specified, apply them here
-                    bp_key=f"{plate}_ch{channel}"
-                    
+                    bp_key=channel_index[f"{plate}_ch{channel}"]
+                
                     if not self.flatfields == None:
                         if str(bp_key) in self.flatfields.keys():
                             log.info(f"Applying BaSiC model for channel: {str(bp_key)}")
@@ -242,18 +244,18 @@ class MergeAndAlign:
         img = self.plate_reader.get_img(self.plate_reader.images[self.plates[0]][0])
         
         channel_names_old=img.channel_names
-        
+                
         if channel_names_old is None:
             log.warning("Skipping writing new channel names as none were found")
             return
         
         plate_names = [self.plates[0] for channel in channel_names_old]
-            
+        
         for plate_merge in self.plates_merge:
             img = self.plate_reader.get_img(self.plate_reader.images[plate_merge][0])
             channel_names_old += img.channel_names
             plate_names += [plate_merge for channel in img.channel_names]
-            
+                        
         
         outdir = f"{self.output}/{self.plates[0]}"
         if not os.path.exists(outdir):
@@ -279,6 +281,26 @@ class MergeAndAlign:
         
         return range(0, len(channel_names_old))
     
+    # Make a map of new and old channel ids
+    def get_bp_channel_keys(self, plate):
+        
+        channel_index = {}
+        channels = range(0, self.plate_reader.get_img(self.plate_reader.images[plate][0]).dims['C'][0])
+
+        new_idx=0
+        
+        for ch in channels:
+            channel_index[f"{plate}_ch{new_idx}"] = f"{plate}_ch{ch}"
+            new_idx+=1
+            
+        for plate_merge in self.plates_merge:
+            channels = range(0, self.plate_reader.get_img(self.plate_reader.images[plate_merge][0]).dims['C'][0])
+            for ch in channels:
+                channel_index[f"{plate}_ch{new_idx}"] = f"{plate_merge}_ch{ch}"
+                new_idx+=1
+                
+        return channel_index
+            
     
     def printParams(self):
         
