@@ -141,7 +141,6 @@ process cellpose {
         cmd =
         """
         python $params.tg_core_dir/run_cellpose.py \
-        --input $params.rn_image_dir \
         --output ./ \
         --plate $plate \
         --well $well \
@@ -150,6 +149,12 @@ process cellpose {
         --diameter $params.cp_cell_size \
         --model $params.cp_model\
         """
+        
+        if (params.dc_run) {
+            cmd += " --input $params.rn_decon_dir"
+        } else {
+            cmd += " --input $params.rn_image_dir"
+        }
         
         if (nucl_channel >= 0) {
             cmd +=
@@ -228,11 +233,39 @@ process register {
 
 }
 
+// Deconvolute
+process deconvolute {
+    //scratch true
+    label 'gpu_midmem'
+    conda params.tg_conda_env
+    storeDir "${params.rn_decon_dir}"
+    
+    input:
+        tuple val(plate), val(well), val(row), val(col), val(nucl_channel), val(cell_channel), val(psf_string), path(psfs)
+    output:
+        tuple val(plate), val(well), val(row), val(col), val(nucl_channel), val(cell_channel), path("$plate/$row/$col")
+    script:
+        cmd =
+        """
+        python $params.tg_core_dir/run_redlionfish.py \
+        --input $params.rn_image_dir \
+        --plate $plate \
+        --well $well \
+        --mode gpu \
+        --psf $psf_string \
+        --output ./ \
+        --niter $params.dc_niter\
+        """
+        
+        if (params.rn_max_project) {
+            cmd += " --max_project"
+        }
+}
 
 // Run a cellprofiler run
 // regular queue
 process cellprofiler {
-    scratch false
+    scratch true
     label 'normal'
     conda params.cpr_conda_env
     publishDir "$params.rn_publish_dir/cellprofiler", mode: 'move'
@@ -247,11 +280,16 @@ process cellprofiler {
         """
         # Stage files
         python ${params.tg_core_dir}/stage_cellprofiler.py \
-        --input ${params.rn_image_dir} \
         --output ./images \
         --well $well \
         --plate $plate\
         """
+        
+        if (params.dc_run) {
+            cmd += " --input $params.rn_decon_dir"
+        } else {
+            cmd += " --input $params.rn_image_dir"
+        }
         
         if (merge_plates) {
             cmd += " --plate_merge " + merge_plates
@@ -385,7 +423,9 @@ workflow run_pipeline {
             tuple(row.channels.split(',')), 
             tuple(row.bp_channels.split(',')),
             row.cp_nucl_channel,
-            row.cp_cell_channel)}
+            row.cp_cell_channel,
+            row.dc_channels,
+            row.dc_psfs)}
             
         //manifest.view()
 
@@ -485,30 +525,50 @@ workflow run_pipeline {
             row.row,
             row.col
         )}
-        
-        //well_in.view()
+                
         //------------------------------------------------------------
-        // Cellpose
-        
-        // Append the things from the manifest needed for cellpose
-        // Use -1 as the channels are 0 indexed                
-        cellpose_in = well_in.combine(manifest, by: 0)
-        .filter(row -> {row[8] != "none"})
-        .map{ row -> tuple(
-            row[0], // plate
-            row[1], // well
-            row[2], // row
-            row[3], // col
-            convertChannelType(row[7]), // nucl_channel
-            row[8].toInteger()-1 // cell_channel
-        )}
-            //            nucl_channel: if row[7].isInteger() ? row[7].toInteger()-1 : -9,
+        // Deconvolute
+        if (params.dc_run) {
+            decon_in = well_in.combine(manifest, by: 0)
+            .filter(row -> {row[8] != "none"})
+            .map{ row -> tuple(
+                row[0], // plate
+                row[1], // well
+                row[2], // row
+                row[3], // col
+                convertChannelType(row[7]), // nucl_channel
+                convertChannelType(row[8]), // cell_channel
+                row[9].split(',').collect{it -> (it.toInteger() -1).toString() + "=" + new File(row[10].split(',')[it.toInteger() -1]).getName()}.join(" "),  // query_channels
+                row[10].split(',').collect(it -> (file(it))) //dc_psfs
+            )}      
+            
+            // Deconvolute
+            cellpose_in = deconvolute(decon_in).map{ row -> tuple(
+                row[0], // plate
+                row[1], // well
+                row[2], // row
+                row[3], // col
+                row[4], // nucl_channel
+                row[5] // cell_channel
+            )}            
+        } else {
+            // Append the things from the manifest needed for cellpose
+            cellpose_in = well_in.combine(manifest, by: 0)
+            .filter(row -> {row[8] != "none"})
+            .map{ row -> tuple(
+                row[0], // plate
+                row[1], // well
+                row[2], // row
+                row[3], // col
+                convertChannelType(row[7]), // nucl_channel
+                convertChannelType(row[8]) // cell_channel
+            )}
+        }
 
         //------------------------------------------------------------
         // Register
         if (params.rn_manifest_registration != null) {
         
-            //well_in.view()
             manifest_registration = Channel
             .fromPath(params.rn_manifest_registration)
             .splitCsv(header:true, sep:"\t")
@@ -534,7 +594,6 @@ workflow run_pipeline {
                 row[6].split(',').collect{it -> (it.toInteger() -1).toString()}.join(" ")  // query_channels
             )} 
                  
-                 
             // Run registration
             registration_out = register(registration_in)
                           
@@ -548,30 +607,14 @@ workflow run_pipeline {
                 row[3], // col
                 row[4], // nucl_channel
                 row[5]  // cell_channel
-            )}
-                
-            //cellpose_in.view()
+            )}                
         } else {
             registration_out = null
         }
         
         // Run cellpose
-        //cellpose_in.view()    
         cellpose_out = cellpose(cellpose_in)
-        
-        //cellpose_out = cellpose_results.cellpose_out
-        
-        // Grab nucleus masks, if empty return NO_NUCL_MASK
-        //nucl_masks = cellpose_results.nucl_masks.ifEmpty{file('NO_NUCL_MASK')}
-        
-        // Convert the channel to a value channel if its empty so it is properly run
-        //if (nucl_masks.first().name == 'NO_NUCL_MASK') {
-        //    nucl_masks = nucl_masks.first()
-        // }
-                
-        //------------------------------------------------------------
-        // Deconvelute
-        //deconvelute_out = deconvelute(well_in)
+
     
         //------------------------------------------------------------
         // Cellprofiler / get_features

@@ -90,18 +90,21 @@ tglow.build.img.index <- function(path, plate_filter=NULL, pattern=".ome.tiff$")
     plates <- plates[plates %in% plate_filter]
   }
   
-  cat("[INFO] Indexing plates: ", plates, "\n")
+  #cat("[INFO] Indexing plates: ", plates, "\n")
   
   index <- data.frame(matrix(NA, nrow=0, ncol=6))
   
+  nfiles <- 0
   for (plate in plates) {
+    cat("[INFO] Indexing plate: ", plate, "\n")
+
     rows <- list.files(paste0(path, "/", plate), pattern="^[A-Z]$")
     for (row in rows) {
       cols <- list.files(paste0(path, "/", plate, "/", row), pattern="^\\d+$")
       for (col in cols) {
         
         files <- list.files(paste0(path, "/", plate, "/", row, "/", col), pattern=pattern)
-        
+        nfiles <- nfiles + length(files)
         for (file in files) {
           
           field <- gsub(pattern, "", file)
@@ -112,9 +115,15 @@ tglow.build.img.index <- function(path, plate_filter=NULL, pattern=".ome.tiff$")
       } 
     }
   }
-  
   colnames(index) <- c("plate", "well", "row", "col", "field", "path")
-  rownames(index) <- paste0(index$plate, ":", index$well, ":", index$field)
+
+  cat("[INFO] Indexed ", nfiles, " image files\n")
+  if (nfiles ==0) {
+    warning("No files detected, suggest you check pattern is correct.")
+  } else {
+    rownames(index) <- paste0(index$plate, ":", index$well, ":", index$field)
+  }
+    
   
   return(index)  
 }
@@ -168,7 +177,8 @@ tglow.build.img.index.deprecated <- function(path, pattern.group, pattern.file="
 #' @param group.col The feature to match cells to img.index
 #' @param channels The channels to read. Vector of indices. (default NULL = all channels)
 #' @param planes The planes to read. Vector of indices. (default NULL = all planes)
-#' @param project Should the stack be max projected per channel? (default TRUE)
+#' @param max.project Should the stack be max projected per channel? (default TRUE)
+##' @param ncores How many cores to use with parallels mcapply for reading
 #' 
 #' @returns A list of EBImage objects by object id
 tglow.read.imgs <- function(data,
@@ -184,65 +194,87 @@ tglow.read.imgs <- function(data,
                             max.project=T) {
   
   cur.cells <- data$cells
-  out <- list()
+  #out <- list()
   j <- 0
-  for (i in cell.subset) {
-    
+  #for (i in cell.subset) {
+  out <- lapply(cell.subset, function(i) {
     cat("[INFO] Reading ", round((j / length(cell.subset))*100) ,"%\r")
-    j <- j+1
+    j <<- j+1
     cur.group <- data$meta[cur.cells[i,"Image_ImageNumber_Global"],group.col]
     cur.img   <- img.index[cur.group,"path"]
     x.pos     <- cur.cells[i,feature.x]
     y.pos     <- cur.cells[i,feature.y]
     
+   # cat("[INFO] Reading ", cur.img, "\n")
+
     # TODO: can optimize this to only read a subset
-    img <- read.image(cur.img, normalize=F)
+    cx <- round((x.pos-window):(x.pos+window))
+    cy <- round((y.pos-window):(y.pos+window))
+    
+    subset = list(X=cx, Y=cy)
+    
+    if (!is.null(channels)) {
+      subset[["C"]] = channels
+    }
+    
+    if (!is.null(planes)) {
+      subset[["Z"]] = planes
+    }
+    
+    img <- read.image(cur.img, normalize=F, subset=subset)
+
+    #img <- read.image(cur.img, normalize=F)
     colorMode(img) = Grayscale
+    #out[[j]] <- img
     
-    cx <- (x.pos-window):(x.pos+window)
-    cy <- (y.pos-window):(y.pos+window)
-    
+    # cat("[INFO] ",cx, ":", cy, " dim: ", dim(img), "\n")
+
     if (length(dim(img)) == 4) {
-      if (is.null(channels)) {
-        channels = seq(1, img@dim[3])
-      }
+      #if (is.null(channels)) {
+      #  channels = seq(1, img@dim[3])
+      #}
       
-      if (is.null(planes)) {
-        planes = seq(1, img@dim[4])
-      }
+      #if (is.null(planes)) {
+      #  planes = seq(1, img@dim[4])
+     # }
       
       # Crop
-      crop <- img[cx, cy, channels, planes]
+      #crop <- img[, , channels, planes]
   
       # Max project
       if (max.project) {
-        crop <- apply(crop, c(1, 2, 3), max)
+        crop <- apply(img, c(1, 2, 3), max)
       }
+      
     } else if (length(dim(img))==3) {
       
-      if (is.null(planes)) {
-        planes = seq(1, img@dim[3])
-      }
+      #if (is.null(planes)) {
+      #  planes = seq(1, img@dim[3])
+      #}
       
       # Crop
-      crop <- img[cx, cy, planes]
+      #crop <- img[, , planes]
       
       # Max project
       if (max.project) {
-        crop <- apply(crop, c(1, 2), max)
+        crop <- apply(img, c(1, 2), max)
       }
       
     } else if (length(dim(img)) == 2) {
       
-      crop <- img[cx, cy]
+      crop <- img
       
     }
   
-    out[[i]] <- crop
+    #cat("[INFO] crop dim: ", dim(crop), "\n")
+    #out[[j]] <- crop
+    return(crop)
+
+   # gc()
     #crop <- geometry_area(window*2, window*2, x.pos-window, y.pos-window)  
     #cur.img.crop <- image_crop(cur.img, crop)
     #out <- c(out,cur.img.crop)
-  }
+  })
   
   cat("\n")
   names(out) <- cur.cells[cell.subset, feature.id]
@@ -250,6 +282,73 @@ tglow.read.imgs <- function(data,
   return(out)
 }
 
+#-------------------------------------------------------------------------------
+#' Wrapper around mclapply to track progress
+#' 
+#' Based on http://stackoverflow.com/questions/10984556
+#' 
+#' @param X         a vector (atomic or list) or an expressions vector. Other
+#'                  objects (including classed objects) will be coerced by
+#'                  ‘as.list’
+#' @param FUN       the function to be applied to
+#' @param ...       optional arguments to ‘FUN’
+#' @param mc.preschedule see mclapply
+#' @param mc.set.seed see mclapply
+#' @param mc.silent see mclapply
+#' @param mc.cores see mclapply
+#' @param mc.cleanup see mclapply
+#' @param mc.allow.recursive see mclapply
+#' @param mc.progress track progress?
+#' @param mc.style    style of progress bar (see txtProgressBar)
+#'
+#' @examples
+#' x <- mclapply2(1:1000, function(i, y) Sys.sleep(0.01))
+#' x <- mclapply2(1:3, function(i, y) Sys.sleep(1), mc.cores=1)
+#' 
+#' dat <- lapply(1:10, function(x) rnorm(100)) 
+#' func <- function(x, arg1) mean(x)/arg1 
+#' mclapply2(dat, func, arg1=10, mc.cores=2)
+#-------------------------------------------------------------------------------
+mclapply2 <- function(X, FUN, ..., 
+    mc.preschedule = TRUE, mc.set.seed = TRUE,
+    mc.silent = FALSE, mc.cores = getOption("mc.cores", 2L),
+    mc.cleanup = TRUE, mc.allow.recursive = TRUE,
+    mc.progress=TRUE, mc.style=3) 
+{
+    if (!is.vector(X) || is.object(X)) X <- as.list(X)
+
+    if (mc.progress) {
+        f <- fifo(tempfile(), open="w+b", blocking=T)
+        p <- parallel:::mcfork()
+        pb <- txtProgressBar(0, length(X), style=mc.style)
+        setTxtProgressBar(pb, 0) 
+        progress <- 0
+        if (inherits(p, "masterProcess")) {
+            while (progress < length(X)) {
+                readBin(f, "double")
+                progress <- progress + 1
+                setTxtProgressBar(pb, progress) 
+            }
+            cat("\n")
+            parallel:::mcexit()
+        }
+    }
+    tryCatch({
+        result <- mclapply(X, ..., function(...) {
+                res <- FUN(...)
+                if (mc.progress) writeBin(1, f)
+                res
+            }, 
+            mc.preschedule = mc.preschedule, mc.set.seed = mc.set.seed,
+            mc.silent = mc.silent, mc.cores = mc.cores,
+            mc.cleanup = mc.cleanup, mc.allow.recursive = mc.allow.recursive
+        )
+
+    }, finally = {
+        if (mc.progress) close(f)
+    })
+    result
+}
 
 
 

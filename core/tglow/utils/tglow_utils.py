@@ -113,7 +113,7 @@ def float_to_16bit_unint(matrix) -> np.array:
     
     return matrix
 
-# Convert a numpy 32bit float to a 16 bit int, clip values to 
+# Convert a numpy 32bit float to a 32 bit int, clip values to  max
 def float_to_32bit_unint(matrix) -> np.array:
 
     # Round to nearest int            

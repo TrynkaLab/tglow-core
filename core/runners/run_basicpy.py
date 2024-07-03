@@ -291,7 +291,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train a basicpy model on raw HCI images orgnaized into <plate>/<row>/<col>/<field>.ome.tiff stacks with CZYX")
     parser.add_argument('-i','--input', help='Base dir to input organized <plate>/<row>/<col>/<field>.ome.tiff')
     parser.add_argument('-o','--output', help='Output folder')
-    parser.add_argument('--blacklist', help='TSV file with "<plate>  <well>" on each row descrbing what to ignore')
+    parser.add_argument('--blacklist', help='TSV file with "<plate>  <well>" on each row descrbing what to ignore', default=None)
     parser.add_argument('--output_prefix', help='Output prefix name', default="basicpy")
     parser.add_argument('--no_tune', help="Do not tune the basicpy model", action='store_true', default=False)
     parser.add_argument('--fit_darkfield', help="Fit the darkfield component. For tglow not reccomended", action='store_true', default=False)

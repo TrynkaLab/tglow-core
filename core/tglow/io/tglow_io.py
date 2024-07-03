@@ -313,7 +313,7 @@ class AICSImageReader():
                     fields = [f.replace(".ome.tiff", "") for f in fields]
                     
                     if self.fields_filter is not None:
-                        fields = [field for field in self.fields if field in self.fields_filter]
+                        fields = [field for field in fields if field in self.fields_filter]
                         
                     if plate not in self.fields:
                         self.fields[plate] = set()
@@ -333,7 +333,7 @@ class AICSImageReader():
         #if self.fields_filter is not None:
         #    self.fields = [field for field in self.fields if field in self.fields_filter]
         
-        log.info(f"Indexed {nwells} wells in {nplates} plates, skipped {nwells_blacklisted} blacklisted wells")
+        log.info(f"Indexed {nwells} wells in {nplates} plates with {len(fields)} fields each, skipped {nwells_blacklisted} blacklisted wells")
         log.info(plates)
         log.info(wells)
     

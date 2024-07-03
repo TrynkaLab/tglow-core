@@ -20,13 +20,14 @@ log.setLevel(logging.DEBUG)
 
 class CellposeRunner():
     
-    def __init__(self, path, plate, output, model, nucl_channel, other_channel, diameter, diameter_nucl, do_3d, anisotropy=None, min_cell_area=None, min_nucl_area=None):
+    def __init__(self, path, plate, output, model, nucl_channel, other_channel, diameter, diameter_nucl, do_3d, anisotropy=None, min_cell_area=None, min_nucl_area=None, fields=None, plot=False, flow_thresh=0.4, prob_thresh=0):
         
         self.path=path
         self.plate=plate
         
         self.anisotropy=anisotropy
         self.do_3d=do_3d
+        self.fields=fields
         self.__init_reader__()
         
         self.output=output
@@ -36,6 +37,8 @@ class CellposeRunner():
         self.diameter=diameter
         self.diameter_nucl=diameter_nucl
         
+        self.flow_thresh=flow_thresh
+        self.prob_thresh=prob_thresh
         # Minimum object area in pixels
         
         if min_cell_area is None:
@@ -44,23 +47,30 @@ class CellposeRunner():
             else:
                 self.min_size = 2 * math.pi * ((self.diameter/6))
         else:
-            self.min_size=min_cell_area
+            self.min_size=int(min_cell_area)
         
-        if min_cell_area is None:
+        if min_nucl_area is None:
             if self.diameter_nucl is not None:
                 
                 if self.do_3d:
                     self.min_size_nucl = 4 * math.pi * (self.diameter_nucl/6)**2
                 else:
                     self.min_size_nucl = 2 * math.pi * ((self.diameter_nucl/6))
+            else:
+                raise Exception("Must set --diameter_nucl when supplying nucleus channel")
         else:
-            self.min_size_nucl=min_cell_area
+            self.min_size_nucl=int(min_nucl_area)
 
+        log.info(f"Set cell diam:{self.diameter} min area: {self.min_size}")
+        log.info(f"Set nucl diam:{self.diameter_nucl} min area: {self.min_size_nucl}")
+
+        self.plot=plot
         
     def __init_reader__(self):
         
         self.reader = AICSImageReader(self.path,
-                                      plates_filter=self.plate)
+                                      plates_filter=self.plate,
+                                      fields_filter=self.fields)
         
         if self.anisotropy is None and self.do_3d is True:
             log.info("Estimating anisotropy based on first image")
@@ -86,6 +96,9 @@ class CellposeRunner():
         
         # Read channel with cell outlines
         query.channel = self.other_channel
+        
+        log.debug(f"Processing cell channel: {query.channel}")
+        
         data_cell = self.reader.read_image(query)
         
         # If max projection is true
@@ -96,6 +109,8 @@ class CellposeRunner():
         # Read channel with nucleus signal
         if self.nucl_channel:
             query.channel = self.nucl_channel
+            log.debug(f"Processing nucl channel: {query.channel}")
+
             data_nucl = self.reader.read_image(query)
             
             if not self.do_3d:
@@ -131,14 +146,16 @@ class CellposeRunner():
                                                 channel_axis=channel_axis,
                                                 do_3D=self.do_3d,
                                                 anisotropy=self.anisotropy,
-                                                min_size=self.min_size)
+                                                min_size=self.min_size,
+                                                flow_threshold=self.flow_thresh,
+                                                cellprob_threshold=self.prob_thresh)
         log.info("Cell mask running time %s seconds" % round(time.time() - start_time))
 
         if not os.path.exists(f"{self.output}/{query.plate}/{query.get_row_letter()}/{query.col}/"):
             os.makedirs(f"{self.output}/{query.plate}/{query.get_row_letter()}/{query.col}")
 
         # save results as png
-        io.save_masks(img, masks, flows, f"{self.output}/{query.plate}/{query.get_row_letter()}/{query.col}/{query.field}_cell_mask_d{str(self.diameter)}_ch{self.other_channel}", tif=True, png=False, save_outlines=True)
+        io.save_masks(img, masks, flows, f"{self.output}/{query.plate}/{query.get_row_letter()}/{query.col}/{query.field}_cell_mask_d{str(self.diameter)}_ch{self.other_channel}", tif=True, png=False, save_outlines=self.plot)
         
         start_time = time.time()
         
@@ -153,11 +170,13 @@ class CellposeRunner():
                                                     channels=[0,0],
                                                     do_3D=self.do_3d,
                                                     anisotropy=self.anisotropy,
-                                                    min_size=self.min_size_nucl)
+                                                    min_size=self.min_size_nucl,
+                                                    flow_threshold=self.flow_thresh,
+                                                    cellprob_threshold=self.prob_thresh)
             log.info("Nucleus running time %s seconds" % round(time.time() - start_time))
 
             # save results as png
-            io.save_masks(img, masks, flows, f"{self.output}/{query.plate}/{query.get_row_letter()}/{query.col}/{query.field}_nucl_mask_d{self.diameter_nucl}_ch{self.nucl_channel}", tif=True, png=False, save_outlines=True)
+            io.save_masks(img, masks, flows, f"{self.output}/{query.plate}/{query.get_row_letter()}/{query.col}/{query.field}_nucl_mask_d{self.diameter_nucl}_ch{self.nucl_channel}", tif=True, png=False, save_outlines=self.plot)
 
 
 if __name__ == "__main__":
@@ -177,8 +196,11 @@ if __name__ == "__main__":
     parser.add_argument('--diameter_nucl', help="Estimated nucleus size", default=None)
     parser.add_argument('--min_cell_area', help="Minimal area or volume of cells. Defaults to area of circle or volume of sphere 1/6th of --diameter", default=None)
     parser.add_argument('--min_nucl_area', help="Minimal area of volume nuclei. Defaults to area of circle or volume of sphere 1/6th of --diameter_nucl", default=None)
-
     parser.add_argument('--no_3d', help="Don't run in 3d mode", action='store_true', default=False)
+    parser.add_argument('--fields', help='Fields to use. <field #1> | [<field #1> <field #2> <field #n>]', nargs='+', default=None)
+    parser.add_argument('--plot', help="Plot overlay masks", action='store_true', default=False)
+    parser.add_argument('--flow_threshold', help="Cellpose flow threshold", default=0.4)
+    parser.add_argument('--prob_threshold', help="Cellpose cell probability threshold", default=0)
 
     args = parser.parse_args()
     
@@ -208,7 +230,13 @@ if __name__ == "__main__":
                             int(args.diameter) if args.diameter is not None else args.diameter,
                             int(args.diameter_nucl) if args.diameter_nucl is not None else args.diameter_nucl,
                             not args.no_3d,
-                            args.anisotropy)
+                            args.anisotropy,
+                            args.min_cell_area,
+                            args.min_nucl_area,
+                            args.fields,
+                            args.plot,
+                            float(args.flow_threshold),
+                            float(args.prob_threshold))
     
     # Loop, ideally one plate and well at the time is supplied, but can run all
     for plate in args.plate:
