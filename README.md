@@ -41,7 +41,7 @@ Processes:
 1. Basicpy [optional]: parallelized on the plate + channel level, flatfields are saved, no images are stored
 2. Registration (pystackreg) [optional]: parallelized on the well level (all fields). Only registration matrices are saved, no images are stored
 3. Cellpose: parallelized on the well level (all fields), runs on GPU. If registering, currently only runs on the reference plate. Must run a cell segmentation, can optionally provide nucleus channel as well.
-4. TBD deconvonvelution: Will spin out another copy of the data, runs on GPU
+4. Deconvolition [optional]: Will spin out another copy of the data, runs on GPU
 5. feature extraction / cellprofiler: 
     1. Stage the files into a cellprofiler compatable format, apply flatfields, bring together imaging cylces and apply registration if applicable
     2. run feature extraction (cellprofiler) or other custom script
@@ -53,7 +53,7 @@ Processes:
 # Install instructions (nextflow)
 
 This is not written to be very portable at the moment, especially the old bash pipeline is very sanger farm specific.
-However the Nextflow pipeline should be more portable.
+However the Nextflow pipeline should be more portable. Also the GPU installations might require some manual configuring.
 
 ## High level dependencies
 
@@ -278,7 +278,6 @@ that tells the pipeline where the data lives, and which channels are which and h
 # TODO items:
 
 - Stage image folders from iRODS bacup instead of PE export
-- Deconvolution
 - Automatic overlap of manifests when registering, currently need to make sure all ref plate wells are present in query plates
 - Update docs
 - Detailled description of parameters
