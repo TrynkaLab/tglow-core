@@ -13,8 +13,7 @@ Main repo for the TeamTrynka imaging pipelines. Still very much a work in progre
     * tglow: core python package for IO tasks
 - nextflow: nextflow pipeline
 - r-core: R functions for analyzing the output features
-- templates: template scripts implementing the old bash based pipeline (2d)
-
+- templates: template scripts implementing the old bash based pipeline (2d) (DEPRECATED)
 <br>
 <br>
 
@@ -146,7 +145,7 @@ pip install ./
 Keep track of the install path of the conda enviroment, as this will need to be provided to nextflow
 
 
-# Running the pipeline (bash)
+# Running the pipeline (bash) (DEPRECATED)
 
 Make a copy of the templates to the location where you want to run, and edit each of the scripts so they are configured properly to your data.
 
