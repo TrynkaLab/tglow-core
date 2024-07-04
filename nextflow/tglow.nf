@@ -37,7 +37,7 @@ process prepare_manifest {
 // Fetches raw data from NFS and recodes into new OME file structure
 // imaging queue
 process fetch_raw {
-    scratch true
+    scratch params.rn_scratch
     label 'small_img'
     conda params.tg_conda_env
     //storeDir "$params.rn_image_dir/$plate/$row/$col", mode: 'move'
@@ -127,7 +127,7 @@ process cellpose {
     label 'gpu_midmem'
     conda params.tg_conda_env
     storeDir "${params.rn_publish_dir}/masks/"
-    //scratch true
+    scratch params.rn_scratch
 
     input:
         tuple val(plate), val(well), val(row), val(col), val(nucl_channel), val(cell_channel)
@@ -235,10 +235,11 @@ process register {
 
 // Deconvolute
 process deconvolute {
-    //scratch true
     label 'gpu_midmem'
     conda params.tg_conda_env
     storeDir "${params.rn_decon_dir}"
+    scratch params.rn_scratch
+
     
     input:
         tuple val(plate), val(well), val(row), val(col), val(nucl_channel), val(cell_channel), val(psf_string), path(psfs)
@@ -265,11 +266,11 @@ process deconvolute {
 // Run a cellprofiler run
 // regular queue
 process cellprofiler {
-    scratch true
     label 'normal'
     conda params.cpr_conda_env
     publishDir "$params.rn_publish_dir/cellprofiler", mode: 'move'
-    
+    scratch params.rn_scratch
+
     input:
         tuple val(plate), val(key), val(well), val(row), val(col), path(cell_masks), path(nucl_masks), val(merge_plates), path(registration), val(basicpy_string)
     output:
