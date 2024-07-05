@@ -194,14 +194,15 @@ class IndexedImageReader:
 
 class PerkinElmerRawReader(IndexedImageReader):
     """Read raw image data from a PerkinElmer export or from a re-formatted output as long as it has an index file"""
-    
-    def __init__(self, index_xml, path, dtype=np.uint16, resolution=None,  plates_filter=None, fields_filter=None, blacklist=None) -> None:        
+    def __init__(self, index_xml, path, dtype=np.uint16) -> None:        
         self.pe_index=PerkinElmerParser(index_xml)
         self.path = path
         self.pixel_sizes=self.pe_index.estimate_pixel_sizes()
         log.info(f"Estimated pixels sizes to be {self.pixel_sizes} um (z, y, x)")
         cur_index = self.__convert_pe_index__()
-        super().__init__(index=cur_index, path=path, dtype=dtype, resolution=resolution,  plates_filter=plates_filter, fields_filter=fields_filter)
+        #  , resolution=None,  plates_filter=None, fields_filter=None, blacklist=None)
+        #  resolution=resolution,  plates_filter=plates_filter, fields_filter=fields_filter
+        super().__init__(index=cur_index, path=path, dtype=dtype)
     
 
     def __convert_pe_index__(self):
