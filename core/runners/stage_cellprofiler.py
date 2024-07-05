@@ -251,11 +251,12 @@ class MergeAndAlign:
         
         plate_names = [self.plates[0] for channel in channel_names_old]
         
-        for plate_merge in self.plates_merge:
-            img = self.plate_reader.get_img(self.plate_reader.images[plate_merge][0])
-            channel_names_old += img.channel_names
-            plate_names += [plate_merge for channel in img.channel_names]
-                        
+        if self.plates_merge != None:
+            for plate_merge in self.plates_merge:
+                img = self.plate_reader.get_img(self.plate_reader.images[plate_merge][0])
+                channel_names_old += img.channel_names
+                plate_names += [plate_merge for channel in img.channel_names]
+                            
         
         outdir = f"{self.output}/{self.plates[0]}"
         if not os.path.exists(outdir):
@@ -293,12 +294,13 @@ class MergeAndAlign:
             channel_index[f"{plate}_ch{new_idx}"] = f"{plate}_ch{ch}"
             new_idx+=1
             
-        for plate_merge in self.plates_merge:
-            channels = range(0, self.plate_reader.get_img(self.plate_reader.images[plate_merge][0]).dims['C'][0])
-            for ch in channels:
-                channel_index[f"{plate}_ch{new_idx}"] = f"{plate_merge}_ch{ch}"
-                new_idx+=1
-                
+        if self.plates_merge != None:
+            for plate_merge in self.plates_merge:
+                channels = range(0, self.plate_reader.get_img(self.plate_reader.images[plate_merge][0]).dims['C'][0])
+                for ch in channels:
+                    channel_index[f"{plate}_ch{new_idx}"] = f"{plate_merge}_ch{ch}"
+                    new_idx+=1
+                    
         return channel_index
             
     

@@ -431,8 +431,11 @@ workflow run_pipeline {
         //manifest.view()
 
         // Blacklist channel, if missing just an empty channel
-        blacklist_channel = Channel.value(file(params.rn_blacklist))
-
+        if (params.rn_blacklist == null) {
+            blacklist_channel = Channel.value()
+        } else {
+            blacklist_channel = Channel.value(file(params.rn_blacklist))
+        }
         //------------------------------------------------------------
         // Run basicpy
         
@@ -492,7 +495,7 @@ workflow run_pipeline {
             manifests_in = Channel.from(manifest_paths)
             
         } else {
-            manifests_in = Channel.from(params.rn_manifest_well)
+            manifests_in = Channel.from(params.rn_manifest_well.split(','))
         }
         
         // Construct the channel on the well level
