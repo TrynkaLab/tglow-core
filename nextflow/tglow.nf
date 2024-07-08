@@ -432,10 +432,12 @@ workflow run_pipeline {
 
         // Blacklist channel, if missing just an empty channel
         if (params.rn_blacklist == null) {
-            blacklist_channel = Channel.value()
+            log.info("No blacklist provided")
+            blacklist_channel = Channel.value(file('NO_BLACKLIST'))
         } else {
             blacklist_channel = Channel.value(file(params.rn_blacklist))
         }
+                
         //------------------------------------------------------------
         // Run basicpy
         
@@ -502,7 +504,7 @@ workflow run_pipeline {
         well_channel = manifests_in
             .flatMap{ manifest_path -> file(manifest_path)
             .splitCsv(header:["well", "row", "col", "plate", "index_xml"], sep:"\t") }
-                                       
+                                 
         // Filter blacklist
         if (params.rn_blacklist != null) {
 
