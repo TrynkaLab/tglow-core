@@ -10,6 +10,7 @@ process prepare_manifest {
     output:
         path "manifest.tsv", emit: manifest
         tuple path("Index.xml"), path("Index.json"), path("acquisition_info.txt"), emit: metadata
+        //path('AssayLayout', optional: true), emit assay_layout
     script:
         cmd =
         """
@@ -20,6 +21,16 @@ process prepare_manifest {
         
         cp '$index_xml' ./
         """
+        
+        //def imgdir = new File(index_xml).parent
+        //def assaydir = new File(imgdir.text + "/../AssayLayout")
+        
+        //if (assaydir.exists()) {
+        //    cmd += 
+        //    """
+        //    cp -r '$assaydir' ./
+        //    """
+        //}
         
         // Only keep the first few lines 
         if (params.rn_testmode) {
@@ -266,7 +277,7 @@ process deconvolute {
 // Run a cellprofiler run
 // regular queue
 process cellprofiler {
-    label 'normal'
+    label params.cpr_label
     conda params.cpr_conda_env
     publishDir "$params.rn_publish_dir/cellprofiler", mode: 'move'
     scratch params.rn_scratch
