@@ -74,16 +74,31 @@ tglow.run.assoc <- function(dataset, predictor, assay="cells_norm", method="lm",
   if (is.null(features)) {
     features <- colnames(dataset$cells)[dataset$features$analyze]
     features <- features[features %in% colnames(dataset[[assay]])]
-  } 
+  } else{
+
+    features <- features[features %in% colnames(dataset[[assay]])]
+
+  }
+
   cur.cells <- dataset[[assay]][,features]
   
   if (method == "lm") {
-    if (predictor %in% colnames(dataset$meta) & assay == "cells_norm") {
+    if (predictor %in% colnames(dataset$meta) & assay == "cells") {
+
       x <- dataset$meta[dataset[["cells"]]$Image_ImageNumber_Global, predictor]
-    } else if (predictor %in% colnames(dataset$meta) & assay == "agg"){ # Julie added this so we can do it on the aggregated data as well
+
+    } else if (predictor %in% colnames(dataset$meta) & assay %in% c("agg", "agg_cor", "agg_cor_mean", "agg_cor_median")){ # Julie added this so we can do it on the aggregated data as well
+
       x <- dataset$meta[rownames(dataset$agg), predictor]
+
     } else if (predictor %in% colnames(cur.cells)) {
+
       x <- cur.cells[,predictor]
+
+    } else if(predictor %in% colnames(dataset$meta) & assay %in% c("cells_corrected", "cells_corrected_norm", "cells_norm")) {
+
+          x <- dataset$meta[dataset[[assay]]$Image_ImageNumber_Global, predictor]
+
     } else {
       stop("Not a valid response")
       #cat("[ERROR] Not a valid response\n")
@@ -358,16 +373,22 @@ tglow.grouped.scale <- function(data, grouping, features=NULL, method="mod.z"){
 #' @param method method to use for normalizing, z | mod zcore
 #' 
 #' @returns tglow dataset with normalized assay
-tglow.normalize <- function(dataset, method="mod.z", features=NULL, assay.out="cells_norm", filter=TRUE) {
+tglow.normalize <- function(dataset, method="mod.z", features=NULL, assay.out="cells_norm", assay.in = "cells", filter=TRUE) {
   
   # Normalize and filter features
-  ft <- dataset$cells
-  
+  ft <- dataset[[assay.in]]
+
+  # Extract ids
+  ids <- ft$Image_ImageNumber_Global
+
+  # Filter to features  
   if (is.null(features)) {
-    features <- dataset$features$analyze
+    features <- dataset$features$id[dataset$features$analyze]
+    features <- features[features %in% colnames(dataset[[assay.in]])]
   } 
   
-  ft <- as.matrix(ft[,features])
+  # Creat matrice with the appropriate features
+  ft <- as.matrix(ft[, colnames(ft) %in% features])
   
   
   i <- 0
@@ -407,12 +428,13 @@ tglow.normalize <- function(dataset, method="mod.z", features=NULL, assay.out="c
   
   # Transform to dataframe add back Image_ImageNumber_Global
   ft <- as.data.frame(ft)
-  ft$Image_ImageNumber_Global <- dataset$cells$Image_ImageNumber_Global
+  ft$Image_ImageNumber_Global <- ids
 
   dataset[[assay.out]] <- ft
   
   return(dataset)
 }
+
 
 #-------------------------------------------------------------------------------
 #' Detect outlier cells in PCA space
@@ -524,22 +546,48 @@ tglow.pca.outliers <- function(dataset, grouping=NULL, pc.thresh=0.5, pc.max=500
 #' Calculate the median value per feature, defaulting to normalized assay & per image value
 #' 
 #'
-tglow.median_by_group <- function(dataset, assay = "cells_norm") {
-  # Get features to analyze & that are in the correct assay
-  features <- colnames(dataset$cells)[dataset$features$analyze]
-  features <- features[features %in% colnames(dataset[[assay]])]
+tglow.median_by_group <- function(dataset, assay = "cells_norm", features = NULL, group = "ImageNumber_Global", f = "test") {
+  
+  # Defining the features 
+  if (is.null(features)) {
+    features <- dataset$features$id[dataset$features$analyze]
+    features <- features[features %in% colnames(dataset[[assay]])]
+  } else{
+
+    features <- features[features %in% colnames(dataset[[assay]])]
+
+  }
+  
   
   # Define group values
-  group_values <- dataset$meta[dataset$cells$Image_ImageNumber_Global, ]$ImageNumber_Global
+  group_values <- dataset$meta[dataset[[assay]]$Image_ImageNumber_Global, ][[group]]
   group_values <- as.factor(group_values)
   
   # Use tapply/by to split the data by groups and then apply the median function to each column of those groups
-  results <- by(dataset[[assay]][, features], group_values, function(x) apply(x, 2, median))
-  
+
+  if(f == "median"){
+
+      results <- by(dataset[[assay]][, features], group_values, function(x) apply(x, 2, median))
+
+
+  } else if(f == "mean"){
+
+      results <- by(dataset[[assay]][, features], group_values, function(x) apply(x, 2, mean))
+
+  } else{
+
+      stop("Please choose f == median or mean")
+
+  }
+
   results <- do.call(rbind, results)
+  results <- as.data.frame(results)
+  results$Image_ImageNumber_Global <- rownames(results)
   
   return(results)  
 }
+
+
 
 #-------------------------------------------------------------------------------
 #' Faster alternative to scale a matrix
@@ -586,3 +634,145 @@ fcolScale <- function(x,
   return(x)
 }
 
+
+#-------------------------------------------------------------------------------
+#' Correct for plate effects for example and return corrected dataframe
+#' 
+#'
+
+
+tglow.correct <- function(dataset, assay = "cells", to.correct = "plate_id", features = NULL){
+  
+  # Defining the features 
+  if (is.null(features)) {
+    features <- dataset$features$id[dataset$features$analyze]
+    features <- features[features %in% colnames(dataset[[assay]])]
+  } 
+  
+  # Getting only the cells and removing the NAs
+  cur.cells <- na.omit(dataset[[assay]])
+  ids <- cur.cells$Image_ImageNumber_Global # store for later use
+  
+  # Find variable to correct for in meta 
+  z <- dataset$meta[cur.cells$Image_ImageNumber_Global, to.correct]
+  
+  # Select the features of interest
+  cur.cells <- cur.cells[,features]
+  
+  # Make a dataframe to store plate name. Each new column will be a corrected feature
+  df <- data.frame(z = z)
+  
+  i <- 0 # tracking of progress
+  j <- ncol(cur.cells) # tracking of progress
+  
+  residuals <- data.frame(matrix(nrow = nrow(cur.cells), ncol =0))
+  
+  # For each feature, make a temporary df (data) and correct for the feature, add the residuals of the model as the new data
+  for(y in seq_along(colnames(cur.cells))){
+    
+        i <- i +1
+        cat("\r[INFO]", round((i/j)*100, digits=2), "%")
+        
+        # Prepare dataframe
+        data <- df
+        data$y <- cur.cells[, y]
+        
+        # Run the linear models
+        l1 <- lm(y ~ z, data = data)
+        
+        feature <- colnames(cur.cells)[y]
+        residuals[[feature]] <- residuals(l1)
+    
+  }
+  
+  # Add back IDs
+  residuals$Image_ImageNumber_Global <- ids
+  
+  return(residuals)
+  
+  
+}
+
+
+#-------------------------------------------------------------------------------
+#' Correct for plate effects for example PER GROUP and return corrected dataframe
+#' 
+#'
+
+
+tglow.correct.group <- function(dataset, assay = "cells", to.correct = "plate_id", features = NULL, group = "plate"){
+  
+  # Defining the features 
+  if (is.null(features)) {
+    features <- dataset$features$id[dataset$features$analyze]
+    features <- features[features %in% colnames(dataset[[assay]])]
+  } 
+  
+  # Find the groups 
+  groups <- unique(dataset$meta[[group]])
+  
+  res.list <- list()
+  
+  # Extract cells, subset to each group & remove NAs
+  for(g in groups){
+    
+    # Subset to only our samples of interest
+    imgs.to.keep <- rownames(dataset$meta[dataset$meta[[group]] == g, ])
+    imgs.to.keep <- rownames(dataset$meta) %in% imgs.to.keep
+    table(imgs.to.keep)
+    
+    temp <- tglow.filter.img.apply(dataset, imgs.to.keep)
+    
+    # Getting only the cells and removing the NAs
+    cur.cells <- na.omit(temp[[assay]])
+    ids <- cur.cells$Image_ImageNumber_Global # store for later use
+    
+    # Find variable to correct for in meta 
+    z <- temp$meta[cur.cells$Image_ImageNumber_Global, to.correct]
+    
+    # Select the features of interest
+    cur.cells <- cur.cells[,features]
+    
+    # Make a basic dataframe for the function [so we do z ~ f]
+    df <- data.frame(z = z)
+    
+    i <- 0 # tracking of progress
+    j <- ncol(cur.cells) # tracking of progress
+    
+    # Make a dataframe to keep all of the data
+    residuals <- data.frame(matrix(nrow = nrow(cur.cells), ncol =0))
+    
+    # For each feature, make a temporary dataframe and correct for the feature, add the residuals of the model as the new data
+    for(y in seq_along(colnames(cur.cells))){
+            
+            i <- i +1
+            cat("\r[INFO]", round((i/j)*100, digits=2), "%")
+            
+            # Prepare dataframe
+            data <- df
+            data$y <- cur.cells[, y]
+            
+            # Run the linear models
+            l1 <- lm(y ~ z, data = data)
+            
+            feature <- colnames(cur.cells)[y]
+            residuals[[feature]] <- residuals(l1)
+      
+    }
+    
+    # Add back IDs
+    residuals$Image_ImageNumber_Global <- ids
+    
+    # Add it to the list of groups
+    res.list[[g]] <- residuals
+    
+    
+  }
+  
+  # Put it all in a single dataframe
+  res <- do.call(rbind, res.list)
+  
+  return(res)
+  
+  
+}

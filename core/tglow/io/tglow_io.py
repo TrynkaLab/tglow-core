@@ -219,7 +219,7 @@ class PerkinElmerRawReader(IndexedImageReader):
 class AICSImageReader():
     """Reads image data from ome tiffs in a folder structure /plate/row/col/field.ome.tiff where field.ome.tiff is a CZYX array"""
     
-    def __init__(self, path, plates_filter=None, fields_filter=None, blacklist=None, dtype=np.uint16, resolution=None) -> None:
+    def __init__(self, path, plates_filter=None, fields_filter=None, blacklist=None, dtype=np.uint16, resolution=None, pattern=None) -> None:
         self.path = path
         self.plates_filter = plates_filter
         self.fields_filter = fields_filter
@@ -228,6 +228,12 @@ class AICSImageReader():
             self.blacklist = []
         else:
             self.blacklist = blacklist
+            
+            
+        if pattern is None:
+            self.pattern="*.ome.tiff"
+        else:
+            self.pattern = pattern
         
         self.__build_index__()
 
@@ -277,6 +283,7 @@ class AICSImageReader():
         self.cols = {}
         self.fields = {}
         self.images = {}
+        fields = []
 
         for plate in plates:
             rows = self.__list_directories__(f"{self.path}/{plate}")
@@ -308,10 +315,10 @@ class AICSImageReader():
                     nwells = nwells+1
                     wells[plate].add(well)
                     
-                    fields = glob.glob(f"{self.path}/{plate}/{row}/{col}/*.ome.tiff")
+                    fields = glob.glob(f"{self.path}/{plate}/{row}/{col}/{self.pattern}")
                     fields = [os.path.normpath(f) for f in fields]
                     fields = [os.path.basename(f) for f in fields]
-                    fields = [f.replace(".ome.tiff", "") for f in fields]
+                    fields = [f.replace(self.pattern[1:], "") for f in fields]
                     
                     if self.fields_filter is not None:
                         fields = [field for field in fields if field in self.fields_filter]
@@ -330,6 +337,7 @@ class AICSImageReader():
                         
         self.index = default_to_regular(index)
         self.wells = wells
+        
                     
         #if self.fields_filter is not None:
         #    self.fields = [field for field in self.fields if field in self.fields_filter]

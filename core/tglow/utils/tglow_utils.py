@@ -4,6 +4,7 @@ import re
 import json
 import string
 import collections
+import struct
 
 # Encode numpy formats as JSON
 class NpEncoder(json.JSONEncoder):
@@ -140,4 +141,19 @@ def dict_to_str(dict):
         return str
     else:
         return None
+    
+    
+# Based on: https://www.r-bloggers.com/2012/06/getting-numpy-data-into-r/
+def write_bin(matrix, file):
+    
+    # Create a binary file
+    binfile = open(file, 'wb')
+    # And write out two integers with the row and column dimension
+    header = struct.pack('2I', matrix.shape[0], matrix.shape[1])
+    binfile.write(header)
+    # Then loop over columns and write each
+    for i in range(matrix.shape[1]):
+        data = struct.pack('%id' % matrix.shape[0], *matrix[:,i])
+        binfile.write(data)
+    binfile.close()
     
