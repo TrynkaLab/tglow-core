@@ -202,6 +202,14 @@ tglow.filter.img.apply <- function(dataset, res) {
   
   if ("cells_norm" %in% names(dataset)) {
     dataset$cells_norm <-  dataset$cells_norm[selector,]
+  } 
+
+  if ("cells_transform" %in% names(dataset)) {
+    dataset$cells_transform <-  dataset$cells_transform[selector,]
+  }
+
+  if ("cells_corrected" %in% names(dataset)) {
+    dataset$cells_corrected <-  dataset$cells_corrected[selector,]
   }
   
   obj.nr <- unique(as.character(unlist(dataset$cells[,grep("Object_Number_Global",colnames(dataset$cells))])))

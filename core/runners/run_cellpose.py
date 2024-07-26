@@ -43,9 +43,9 @@ class CellposeRunner():
         
         if min_cell_area is None:
             if self.do_3d:
-                self.min_size = 4 * math.pi * (self.diameter/6)**2
+                self.min_size = 4/3 * math.pi * (self.diameter/6)**3
             else:
-                self.min_size = 2 * math.pi * ((self.diameter/6))
+                self.min_size =  math.pi * ((self.diameter/6))**2
         else:
             self.min_size=int(min_cell_area)
         
@@ -53,9 +53,11 @@ class CellposeRunner():
             if self.diameter_nucl is not None:
                 
                 if self.do_3d:
-                    self.min_size_nucl = 4 * math.pi * (self.diameter_nucl/6)**2
+                   # self.min_size_nucl = 4 * math.pi * (self.diameter_nucl/6)**2
+                    self.min_size_nucl = (4/3) * math.pi * (self.diameter_nucl/6)**3
                 else:
-                    self.min_size_nucl = 2 * math.pi * ((self.diameter_nucl/6))
+                    #self.min_size_nucl = 2 * math.pi * ((self.diameter_nucl/6))
+                    self.min_size_nucl =  math.pi * (self.diameter_nucl/6)**2
             else:
                 raise Exception("Must set --diameter_nucl when supplying nucleus channel")
         else:

@@ -413,16 +413,25 @@ tglow.normalize <- function(dataset, method="mod.z", features=NULL, assay.out="c
   
   if(filter==TRUE){
 
+    # OLD SCRIPT THAT REMOVES FEATURES FROM DATAFRAME
      # Remove non properly normalized features and those with zero variance
-    cat("[INFO] Checking for NA's\n")
-    ft <- ft[,colSums(is.na(ft)) == 0]
-    cat("[INFO] Checking for zero variances\n")
-    ft <- ft[,Rfast::colVars(ft) != 0]
+    #cat("[INFO] Checking for NA's\n")
+    #ft <- ft[,colSums(is.na(ft)) == 0]
+    #cat("[INFO] Checking for zero variances\n")
+    #ft <- ft[,Rfast::colVars(ft) != 0]
     #ft <- ft[,colVars(as.matrix(ft))!=0]
     
-    if (ncol(ft) != length(features)) {
-      warning(paste0("Removed ", length(features)-ncol(ft), " features with zero variance after normalizing"))
-    }
+    #if (ncol(ft) != length(features)) {
+    #  warning(paste0("Removed ", length(features)-ncol(ft), " features with zero variance after normalizing"))
+    #}
+
+    # NEW SCRIPT THAT KEEPS FEATURES IN DATAFRAME - BUT CHANGES output$features
+    dataset$features$analyze_norm <- dataset$features$analyze
+    cat("[INFO] Checking for NA's\n")
+    dataset$features$analyze_norm[colSums(is.na(ft)) > 0] <- F # Set features with NAs as F
+    cat("[INFO] Checking for zero variances\n")
+    dataset$features$analyze_norm[Rfast::colVars(ft) == 0] <- F # Set features with zero variance as F
+    dataset$features$analyze_norm[colVars(as.matrix(ft)) == 0] <- F # Set features with zero variance as 
 
   }
   
@@ -707,6 +716,8 @@ tglow.correct.group <- function(dataset, assay = "cells", to.correct = "plate_id
     features <- dataset$features$id[dataset$features$analyze]
     features <- features[features %in% colnames(dataset[[assay]])]
   } 
+
+  features <- features[features %in% colnames(dataset[[assay]])]
   
   # Find the groups 
   groups <- unique(dataset$meta[[group]])
@@ -774,5 +785,59 @@ tglow.correct.group <- function(dataset, assay = "cells", to.correct = "plate_id
   
   return(res)
   
+  
+}
+
+#-------------------------------------------------------------------------------
+#' Function to transform data using boxcox
+#' c is the column you want to transform
+
+
+tglow.transform.bc <- function(c, tracking = T){
+
+  
+if(tracking == T){
+  # Increment the global counter
+  i <<- i + 1
+  
+  # Print the progress
+  cat(sprintf("Processing column %d of %d\n", i, j), "\r")
+
+}
+
+  # If is not positive - then offset to make everything positive
+  if(any(c <= 0)){
+    
+    c <- abs(min(c, na.rm=T)) + c + 1
+    
+  }
+  
+  # Create data to estimate transformation parameters
+  y <- c[cells] # subset 50K cells
+  #x <- rep(1, length(y)) # make everything a 1
+  
+  # Estimate transformation parameters
+  bc <- MASS::boxcox(y ~  1, plotit = F) # don't plot lambda outcome
+  lambda <- bc$x[which.max(bc$y)]
+  
+  # Define fudge: uncertainty value so that anything within that range becomes the closest value
+  fudge <- 0.1
+  
+  # Transform data
+  if(lambda < fudge & lambda > -fudge){ # If the data is in between -0.2 & 0.2, then just do a log
+    
+    t <- log(c)
+    
+  } else if (lambda < (1 + fudge) & lambda > (1 - fudge)){ # If the data is in still between -1.2 & 1.2, then just leav it
+    
+    t <- c
+    
+  } else { # Otherwise use the calculated lambda
+    
+    t <- (c^lambda - 1)/lambda
+    
+  }
+  
+  t
   
 }
