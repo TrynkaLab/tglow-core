@@ -187,6 +187,10 @@ process cellpose {
             cmd += " --no_3d"
         }
         
+        if (params.cp_dont_use_nucl_for_declump) {
+            cmd += " --dont_use_nucl_for_declump"
+        }
+        
         // Add a fake nucleus channel because nextflow doesn't play nicely with 
         // tuples and mulptiple input files, otherwise making sure wells and channels are 
         // matched turns into a pain
@@ -251,7 +255,6 @@ process deconvolute {
     storeDir "${params.rn_decon_dir}"
     scratch params.rn_scratch
 
-    
     input:
         tuple val(plate), val(well), val(row), val(col), val(nucl_channel), val(cell_channel), val(psf_string), path(psfs)
     output:
@@ -266,6 +269,7 @@ process deconvolute {
         --mode gpu \
         --psf $psf_string \
         --output ./ \
+        --clip_max $dc_clip_max \
         --niter $params.dc_niter\
         """
         
@@ -279,7 +283,8 @@ process deconvolute {
 process cellprofiler {
     label params.cpr_label
     conda params.cpr_conda_env
-    publishDir "$params.rn_publish_dir/cellprofiler", mode: 'move'
+    //publishDir "$params.rn_publish_dir/cellprofiler", mode: 'move'
+    storeDir "$params.rn_publish_dir/cellprofiler"
     scratch params.rn_scratch
 
     input:
@@ -376,8 +381,7 @@ workflow stage {
         
         //manifests_in.view()
         well_channel = manifests_in.flatMap{ manifest_path -> file(manifest_path).splitCsv(header:["well", "row", "col", "plate", "index_xml"], sep:"\t") }
-        
-        
+
         // tuple val(key), val(plate), val(well), val(row), val(col), val(index_xml)
         well_channel = well_channel.map(row -> {tuple(
             row.plate + ":" + row.well,

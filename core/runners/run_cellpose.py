@@ -20,7 +20,7 @@ log.setLevel(logging.DEBUG)
 
 class CellposeRunner():
     
-    def __init__(self, path, plate, output, model, nucl_channel, other_channel, diameter, diameter_nucl, do_3d, anisotropy=None, min_cell_area=None, min_nucl_area=None, fields=None, plot=False, flow_thresh=0.4, prob_thresh=0):
+    def __init__(self, path, plate, output, model, nucl_channel, other_channel, diameter, diameter_nucl, do_3d, anisotropy=None, min_cell_area=None, min_nucl_area=None, fields=None, plot=False, flow_thresh=0.4, prob_thresh=0, use_nucl_for_declump=True):
         
         self.path=path
         self.plate=plate
@@ -50,18 +50,22 @@ class CellposeRunner():
             self.min_size=int(min_cell_area)
         
         if min_nucl_area is None:
-            if self.diameter_nucl is not None:
-                
-                if self.do_3d:
-                   # self.min_size_nucl = 4 * math.pi * (self.diameter_nucl/6)**2
-                    self.min_size_nucl = (4/3) * math.pi * (self.diameter_nucl/6)**3
+            
+            self.min_size_nucl = None
+            if self.nucl_channel is not None:
+                if self.diameter_nucl is not None:
+                    if self.do_3d:
+                    # self.min_size_nucl = 4 * math.pi * (self.diameter_nucl/6)**2
+                        self.min_size_nucl = (4/3) * math.pi * (self.diameter_nucl/6)**3
+                    else:
+                        #self.min_size_nucl = 2 * math.pi * ((self.diameter_nucl/6))
+                        self.min_size_nucl =  math.pi * (self.diameter_nucl/6)**2
                 else:
-                    #self.min_size_nucl = 2 * math.pi * ((self.diameter_nucl/6))
-                    self.min_size_nucl =  math.pi * (self.diameter_nucl/6)**2
-            else:
-                raise Exception("Must set --diameter_nucl when supplying nucleus channel")
+                    raise Exception("Must set --diameter_nucl when supplying nucleus channel")
         else:
             self.min_size_nucl=int(min_nucl_area)
+            
+        self.use_nucl_for_declump=use_nucl_for_declump
 
         log.info(f"Set cell diam:{self.diameter} min area: {self.min_size}")
         log.info(f"Set nucl diam:{self.diameter_nucl} min area: {self.min_size_nucl}")
@@ -109,7 +113,7 @@ class CellposeRunner():
             log.debug(f"cell shape: {data_cell.shape}")
             
         # Read channel with nucleus signal
-        if self.nucl_channel:
+        if self.nucl_channel and self.use_nucl_for_declump:
             query.channel = self.nucl_channel
             log.debug(f"Processing nucl channel: {query.channel}")
 
@@ -124,15 +128,7 @@ class CellposeRunner():
             channel_axis=3
             # define CHANNELS to run segementation on
             channels = [1,2]
-            # grayscale=0, R=1, G=2, B=3
             # channels = [cytoplasm, nucleus]
-            # if NUCLEUS channel does not exist, set the second channel to 0
-            # channels = [0,0]
-            # IF ALL YOUR IMAGES ARE THE SAME TYPE, you can give a list with 2 elements
-            # channels = [0,0] # IF YOU HAVE GRAYSCALE
-            # channels = [2,3] # IF YOU HAVE G=cytoplasm and B=nucleus
-            # channels = [2,1] # IF YOU HAVE G=cytoplasm and R=nucleus
-            # or if you have different types of channels in each image
         else:
             # In the case there is no nucleus channel
             img = data_cell
@@ -203,6 +199,7 @@ if __name__ == "__main__":
     parser.add_argument('--plot', help="Plot overlay masks", action='store_true', default=False)
     parser.add_argument('--flow_threshold', help="Cellpose flow threshold", default=0.4)
     parser.add_argument('--prob_threshold', help="Cellpose cell probability threshold", default=0)
+    parser.add_argument('--dont_use_nucl_for_declump', help="Fit nucleus masks, but do not supply as a 2nd channel to model.", action='store_true', default=False)
 
     args = parser.parse_args()
     
@@ -238,7 +235,8 @@ if __name__ == "__main__":
                             args.fields,
                             args.plot,
                             float(args.flow_threshold),
-                            float(args.prob_threshold))
+                            float(args.prob_threshold),
+                            not args.dont_use_nucl_for_declump)
     
     # Loop, ideally one plate and well at the time is supplied, but can run all
     for plate in args.plate:

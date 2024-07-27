@@ -7,7 +7,7 @@ import numpy as np
 
 from tglow.io.tglow_io import AICSImageReader, BlacklistReader, AICSImageWriter
 from tglow.io.image_query import ImageQuery
-from tglow.utils.tglow_utils import float_to_16bit_unint, float_to_32bit_unint, dict_to_str
+from tglow.utils.tglow_utils import float_to_16bit_unint, float_to_32bit_unint, dict_to_str, float_to_16bit_unint_scaled
 
 root_log = logging.getLogger()
 root_log.setLevel(logging.INFO)
@@ -33,6 +33,7 @@ class RedLionFish:
         self.mode = args.mode
         self.max_project = args.max_project
         self.uint32 = args.uint32
+        self.clip_max=int(args.clip_max)
 
         if self.blacklist is not None:
             bl_reader = BlacklistReader(self.blacklist)
@@ -95,7 +96,7 @@ class RedLionFish:
         if self.uint32:        
             decon = float_to_32bit_unint(np.array(decons))
         else:
-            decon = float_to_16bit_unint(np.array(decons))
+            decon = float_to_16bit_unint_scaled(np.array(decons), self.clip_max)
         
         log.debug(f"Final dtype: {decon.dtype} max: {np.max(decon)}")
 
@@ -146,6 +147,7 @@ if __name__ == "__main__":
     parser.add_argument('--mode', help='Mode of caluclating RL. cpu|gpu', default="gpu")
     parser.add_argument('--max_project', help="Output max projection over Z", action='store_true', default=False)
     parser.add_argument('--blacklist', help='TSV file with "<plate>  <well>" on each row descrbing what to ignore', default=None)
+    parser.add_argument('--clip_max', help='Clip values above this prior to 32>16 bit conversion. Values below this will be preserved, but scaled and rounded to 16 bit range', default=65535)
 
     parser.add_argument('--channels', help='Channels to output, zero indexed. Only channels specified in --psf are deconveluted!', nargs='+', default=None)
     parser.add_argument('--uint32', help="Write as 32 bit unsigned integer instead of clipping to 16 bit uint after applying basicpy model", action='store_true', default=False)

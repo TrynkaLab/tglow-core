@@ -98,6 +98,24 @@ def default_to_regular(d):
     return d
 
 # Convert a numpy 32bit float to a 16 bit int, clip values to zero and 65535
+def float_to_16bit_unint_scaled(matrix, max_value) -> np.array:
+
+    # Convert to 16 bit to keep consistency with output
+    # Round to nearest int            
+    matrix = np.rint((matrix/max_value)*np.iinfo(np.uint16).max)
+    
+    # Set negatives to zero
+    matrix[matrix < 0] = 0
+    
+    # Clip values at the 16 bit max
+    matrix[matrix > np.iinfo(np.uint16).max] = np.iinfo(np.uint16).max
+    
+    matrix = matrix.astype(np.uint16)
+    
+    return matrix
+
+
+# Convert a numpy 32bit float to a 16 bit int, clip values to zero and 65535
 def float_to_16bit_unint(matrix) -> np.array:
 
     # Convert to 16 bit to keep consistency with output
