@@ -1018,7 +1018,7 @@ if(tracking == T){
   i <<- i + 1
   
   # Print the progress
-  cat("\r[INFO] ", sprintf("Processing column %d of %d\n", i, j))
+  cat("\r[INFO]", round((i/j)*100, digits=2), "%")
 
 }
 

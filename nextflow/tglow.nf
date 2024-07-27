@@ -269,7 +269,7 @@ process deconvolute {
         --mode gpu \
         --psf $psf_string \
         --output ./ \
-        --clip_max $dc_clip_max \
+        --clip_max $params.dc_clip_max \
         --niter $params.dc_niter\
         """
         
