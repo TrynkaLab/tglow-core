@@ -15,7 +15,7 @@ FILESET_ID=0
 #' Type B: <plate>_<well>.zip with individual files for each child object. Main object is assumed to be _cells.
 #' see 
 #' See tglow.read.fileset.b for detaills
-#' @param n Read only the first n filesets detected.
+#' @param n Read a subset of filesets. If integer, only that fileset is read, otherwise specify indices to read. 
 #' @param verbose Should I be chatty?
 #' @param ... Remaining parameters passed to tglow.read.fileset.a/b
 tglow.read.dir <- function(path, pattern, type, n=NULL, verbose=F, ...) {
@@ -34,7 +34,12 @@ tglow.read.dir <- function(path, pattern, type, n=NULL, verbose=F, ...) {
   }
   
   if (!is.null(n)) {
-    prefixes <- prefixes[1:n]
+  
+    #if (length(n) == 1) {
+        prefixes <- prefixes[n]
+    #} else {
+    #    prefixes <- prefixes[1:n]
+    #}
   }
   
   # Reset global fileset index
@@ -473,7 +478,8 @@ add.global.ids <- function(matrix) {
   # Object numbers
   cols <- grep("ObjectNumber", colnames(matrix), value=T)
   cols <- c(cols,grep("Object_Number", colnames(matrix), value=T))
-  
+  cols <- c(cols,grep("Parent", colnames(matrix), value=T))
+
   for (cur.col in cols) {
     selector <- !is.na(matrix[, cur.col])
     matrix[selector, paste0(cur.col,"_Global")] <- paste0(global.prefix, "_I", matrix[selector,cols.i[1]], "_O", matrix[selector, cur.col])
@@ -612,26 +618,34 @@ tglow.read.fileset.b <- function(prefix,
   index          <- unzip(prefix, list=T)
   index$FileName <- basename(index$Name)
 
-  # Read content of _cells.tsv
-  cells <- read.table(unz(prefix,
-                          index[grep(pat.cells, index$FileName), "Name"]),
-                      stringsAsFactors = F,
-                      header=T,
-                      sep="\t")
-
-  # Read _image.tsv (metadata)
-  img <- read.table(unz(prefix,
-                          index[grep(pat.img, index$FileName), "Name"]),
-                    stringsAsFactors = F,
-                    header=T,
-                    sep="\t")
+  # Unzip into tmp folder
+  tmpdir <- tempdir()
+  unzip(prefix, exdir=tmpdir)
   
+  cells <- fread(paste0(tmpdir, "/", index[grep(pat.cells, index$FileName),"Name"]), data.table=F)
+  img   <- fread(paste0(tmpdir, "/", index[grep(pat.img, index$FileName),"Name"]), data.table=F)
+  orl   <- fread(paste0(tmpdir, "/", index[grep(pat.orl, index$FileName),"Name"]), data.table=F)
+
+  # Read content of _cells.tsv
+  #cells <- read.table(unz(prefix,
+  #                        index[grep(pat.cells, index$FileName), "Name"]),
+  #                    stringsAsFactors = F,
+  #                    header=T,
+  #                    sep="\t")
+  
+  # Read _image.tsv (metadata)
+  #img <- read.table(unz(prefix,
+  #                        index[grep(pat.img, index$FileName), "Name"]),
+  #                  stringsAsFactors = F,
+  #                  header=T,
+  #                  sep="\t")
+
   # Read _objectRelation.ships.tsv
-  orl <- read.table(unz(prefix,
-                        index[grep(pat.orl, index$FileName), "Name"]),
-                    stringsAsFactors = F,
-                    header=T,
-                    sep="\t")  
+  #orl <- read.table(unz(prefix,
+  #                      index[grep(pat.orl, index$FileName), "Name"]),
+  #                  stringsAsFactors = F,
+  #                  header=T,
+  #                  sep="\t")  
   
   
   exclude <- c(grep(pat.cells, index$FileName),
@@ -649,11 +663,16 @@ tglow.read.fileset.b <- function(prefix,
     index$object <- gsub(pat.others, "\\1",index$FileName)
     
     for (i in 1:nrow(index)) {
-      cur <- read.table(unz(prefix,
-                            index[i, "Name"]),
-                        stringsAsFactors = F,
-                        header=T,
-                        sep="\t")  
+      #cur <- read.table(unz(prefix,
+      #                      index[i, "Name"]),
+      #                  stringsAsFactors = F,
+      #                  header=T,
+      #                  sep="\t")  
+      cur <- fread(paste0(tmpdir, "/", index[i, "Name"]), data.table=T)
+      
+      if (nrow(cur) == 0) {
+        next()
+      }
       
       #if (add.global.id) {
       #  cur <- add.global.ids(cur)
@@ -662,14 +681,18 @@ tglow.read.fileset.b <- function(prefix,
       if (merging.strategy == "mean") {
         
         obj              <- index[i, "object"]
-        cur              <- cur[cur[,parent.col] != 0,]
+        cur              <- cur[as.logical(cur[[parent.col]] != 0),]
         colnames(cur)    <- paste0(obj, "_", colnames(cur))
-        selector         <- paste0(cur[,paste0(obj, "_ImageNumber")], "_", cur[,paste0(obj, "_", parent.col)])
+        selector         <- paste0(cur[[paste0(obj, "_ImageNumber")]], "_", cur[[paste0(obj, "_", parent.col)]])
         
         counts            <- table(selector)
+        #exclude.cols      <- c("Group.1", grep("ObjectNumber", colnames(cur), value=T), grep("Number_Object_Number", colnames(cur), value=T))
         exclude.cols      <- c("Group.1", grep("ObjectNumber", colnames(cur), value=T), grep("Number_Object_Number", colnames(cur), value=T))
 
-        tmp               <- aggregate(cur, by=list(selector), FUN=mean, na.rm=T)
+        cur$Group.1 <- selector
+        tmp <- as.data.frame(cur[, lapply(.SD, mean, na.rm=TRUE), by=Group.1, .SDcols=colnames(cur)[!colnames(cur) %in% exclude.cols] ])
+        #tmp               <- aggregate(cur, by=list(selector), FUN=mean, na.rm=T)
+
         rownames(tmp)     <- tmp$Group.1
         tmp[,paste0(obj, "_QC_Object_Count")] <- counts[tmp$Group.1]
         tmp               <- tmp[, !colnames(tmp) %in% exclude.cols]
@@ -681,9 +704,10 @@ tglow.read.fileset.b <- function(prefix,
       } else {
         stop("Only valid merging strategy is 'mean' or 'none'")
       }
-      
     }
   } 
+  # Clean up the tmpdir
+  unlink(tmpdir, recursive=T)
 
   # Standardize ID's across filesets into the following format
   # FS#I#O#
@@ -701,10 +725,10 @@ tglow.read.fileset.b <- function(prefix,
     # ORL, object relationships
     #-----------
     if (nrow(orl) > 0) {
-      orl[,"First.Image.Number.Global"]   <- paste0(global.prefix, "_I", orl[, "First.Image.Number"])
-      orl[,"First.Image.Number.Global"]   <- paste0(global.prefix, "_I", orl[, "First.Image.Number"])
-      orl[,"First.Object Number.Global"]  <- paste0(global.prefix, "_I", orl[, "First.Image.Number"], "_O", orl[, "First.Object.Number"])
-      orl[,"First.Object Number.Global"]  <- paste0(global.prefix, "_I", orl[, "First.Image.Number"], "_O", orl[, "First.Object.Number"])
+      orl[,"First Image Number Global"]   <- paste0(global.prefix, "_I", orl[, "First Image Number"])
+      orl[,"First Image Number Global"]   <- paste0(global.prefix, "_I", orl[, "First Image Number"])
+      orl[,"First Object Number Global"]  <- paste0(global.prefix, "_I", orl[, "First Image Number"], "_O", orl[, "First Object Number"])
+      orl[,"First Object Number Global"]  <- paste0(global.prefix, "_I", orl[, "First Image Number"], "_O", orl[, "First Object Number"])
     }
   }
   

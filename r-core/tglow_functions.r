@@ -397,7 +397,8 @@ tglow.grouped.scale <- function(data, grouping, features=NULL, method="mod.z"){
 #' @param method method to use for normalizing, z | mod zcore
 #' 
 #' @returns tglow dataset with normalized assay
-tglow.normalize <- function(dataset, method="mod.z", features="analyze_norm", assay.out="cells_norm", assay = "cells", filter=TRUE) {
+tglow.normalize <- function(dataset, method="mod.z", features="analyze", assay.out="cells_norm", assay = "cells", filter=TRUE) {
+  
   
   # Normalize and filter features
   ft <- dataset[[assay]]

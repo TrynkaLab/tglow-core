@@ -185,7 +185,7 @@ tglow.filter.cells.apply <- function(dataset, res) {
 #' @returns 
 #' A tglow dataset with the cells, image and object relation matrix filtered
 #' 
-tglow.filter.img.apply <- function(dataset, res) {
+tglow.filter.img.apply <- function(dataset, res, col.img.id="Image_ImageNumber_Global") {
   
   if (class(res) == "data.frame" | class(res) == "matrix") {
     selector <- rowSums(res)==ncol(res)
@@ -197,7 +197,7 @@ tglow.filter.img.apply <- function(dataset, res) {
   
   dataset$meta   <- dataset$meta[selector,]
   img.nr         <- unique(dataset$meta$ImageNumber_Global)
-  selector       <- dataset$cells$Image_ImageNumber_Global %in% img.nr
+  selector       <- dataset$cells[,col.img.id] %in% img.nr
   dataset$cells  <- dataset$cells[selector,]
   
   if ("cells_norm" %in% names(dataset)) {
