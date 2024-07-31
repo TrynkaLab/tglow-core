@@ -83,9 +83,10 @@ tglow.run.assoc <- function(dataset, predictor, assay="cells_norm", method="lm",
   cur.cells <- dataset[[assay]][,features]
   
   if (method == "lm") {
-    if (predictor %in% colnames(dataset$meta) & assay == "cells") {
 
-      x <- dataset$meta[dataset[["cells"]]$Image_ImageNumber_Global, predictor]
+    if (predictor %in% colnames(dataset$meta) & assay %in% c("cells", "cells_corrected", "cells_corrected_norm", "cells_norm", "cells_transform", "cells_log", "cells_sqr")) {
+
+      x <- dataset$meta[dataset[[assay]]$Image_ImageNumber_Global, predictor]
 
     } else if (predictor %in% colnames(dataset$meta) & assay %in% c("agg", "agg_cor", "agg_cor_mean", "agg_cor_median")){ # Julie added this so we can do it on the aggregated data as well
 
@@ -94,10 +95,6 @@ tglow.run.assoc <- function(dataset, predictor, assay="cells_norm", method="lm",
     } else if (predictor %in% colnames(cur.cells)) {
 
       x <- cur.cells[,predictor]
-
-    } else if(predictor %in% colnames(dataset$meta) & assay %in% c("cells_corrected", "cells_corrected_norm", "cells_norm")) {
-
-          x <- dataset$meta[dataset[[assay]]$Image_ImageNumber_Global, predictor]
 
     } else {
       stop("Not a valid response")
@@ -112,16 +109,23 @@ tglow.run.assoc <- function(dataset, predictor, assay="cells_norm", method="lm",
     res <- apply(cur.cells, 2, function(y) {
       i <<- i +1
       cat("\r[INFO]", round((i/j)*100, digits=2), "%")
-      m <- summary(lm(y ~ x))
+      l <- lm(y ~ x)
+      m <- summary(l)
       f <- m$fstatistic
       p <- pf(f[1],f[2],f[3],lower.tail=F)
-      return(c(m$r.squared, m$adj.r.squared, m$fstatistic, p))
+      cooksD <- cooks.distance(l)
+      influential <- cooksD[(cooksD > (3 * mean(cooksD, na.rm = TRUE)))]
+      n.influential <- length(influential)
+
+      return(c(m$r.squared, m$adj.r.squared, m$fstatistic, p, n.influential))
+
     })
     
     res <- t(res)
-    colnames(res) <- c("r.squared", "adj.r.squared", "f.stat", "numdf", "dendf", "p.value")  
+    colnames(res) <- c("r.squared", "adj.r.squared", "f.stat", "numdf", "dendf", "p.value", "n.influential")  
     
     return(res)
+
   } else {
     stop("Not yet implemented")
     #cat("[ERROR] Not yet impelemeted\n")
@@ -129,6 +133,9 @@ tglow.run.assoc <- function(dataset, predictor, assay="cells_norm", method="lm",
   }
   
 }
+
+
+
 
 #-------------------------------------------------------------------------------
 #' Test feature association with meta data element correcting for another feature
@@ -256,12 +263,20 @@ tglow.get.feature.meta.from.cells <- function(feature.names) {
 
 #-------------------------------------------------------------------------------
 #' Merge cell level filesets
+#' Data must be a list of lists with outputs from tglow.read.fileset.a/b
+#' or have the items, cells, meta, orl,  [children], [features], [cells_norm]
 tglow.merge.filesets <- function(data) {
+
+  if (class(data) != "list") {
+    stop("Data argument must be a list.")
+  }
+
   out <- list()
   
   ncol.cells <- as.numeric(lapply(data, function(x){ncol(x[["cells"]])}))
   ncol.meta  <- as.numeric(lapply(data, function(x){ncol(x[["meta"]])}))
   ncol.orl   <- as.numeric(lapply(data, function(x){ncol(x[["orl"]])}))
+  #ncol.nucl <- as.numeric(lapply(data, function(x){ncol(x[["nucl"]])}))
 
   selector <- (ncol.cells == as.numeric(names(which.max(table(ncol.cells))))) & (ncol.meta == as.numeric(names(which.max(table(ncol.meta))))) & (ncol.orl  == as.numeric(names(which.max(table(ncol.orl)))))
   
@@ -272,13 +287,22 @@ tglow.merge.filesets <- function(data) {
   out$cells <- dplyr::bind_rows(lapply(data[selector], function(x){x[["cells"]]}),)
   out$meta  <- dplyr::bind_rows(lapply(data[selector], function(x){x[["meta"]]}),)
   out$orl   <- dplyr::bind_rows(lapply(data[selector], function(x){x[["orl"]]}),)
-  
+  #out$nucl <- dplyr::bind_rows(lapply(data[selector], function(x){x[["nucl"]]}),)
+
   if ( "features" %in% names(data[[1]])) {
     out$features <-  dplyr::bind_rows(lapply(data[selector], function(x){x[["features"]]}))
   }
   
   if ( "cells_norm" %in% names(data[[1]])) {
     out$cells_norm <-  dplyr::bind_rows(lapply(data[selector], function(x){x[["cells_norm"]]}))
+  }
+  
+  # Merge the child object matrices
+  if ("children" %in% names(data[[1]])) {
+    out$children <- list()
+    for (obj in names(data[[1]]$children)) {
+      out$children[[obj]] <-  dplyr::bind_rows(lapply(data[selector], function(x){x[["children"]][[obj]]}))
+    } 
   }
   
   #out$cells <- do.call(rbind, lapply(data, function(x){x[["cells"]][,feature.names]}))
@@ -373,7 +397,7 @@ tglow.grouped.scale <- function(data, grouping, features=NULL, method="mod.z"){
 #' @param method method to use for normalizing, z | mod zcore
 #' 
 #' @returns tglow dataset with normalized assay
-tglow.normalize <- function(dataset, method="mod.z", features=NULL, assay.out="cells_norm", assay = "cells", filter=TRUE) {
+tglow.normalize <- function(dataset, method="mod.z", features="analyze_norm", assay.out="cells_norm", assay = "cells", filter=TRUE) {
   
   # Normalize and filter features
   ft <- dataset[[assay]]
@@ -382,26 +406,25 @@ tglow.normalize <- function(dataset, method="mod.z", features=NULL, assay.out="c
   ids <- ft$Image_ImageNumber_Global
 
   # Filter to features  
-  if (is.null(features)) {
-    features <- dataset$features$id[dataset$features$analyze]
+  if (features %in% c("analyze_norm", "analyze")) {
+    features <- dataset$features$id[dataset$features[[features]]]
     features <- features[features %in% colnames(dataset[[assay]])]
   } 
   
-  # Creat matrice with the appropriate features
-  ft <- as.matrix(ft[, colnames(ft) %in% features])
-  
+  # Creat matrice with the appropriate features [OLD SCRIPT THAT REMOVES FEATURES FROM DF]
+  # ft <- as.matrix(ft[, colnames(ft) %in% features])
   
   i <- 0
   j <- ncol(ft)
 
   if (method == "mod.z") {
-    ft <- apply(ft, 2, function(x){
+    ft[, features] <- apply(ft[, features], 2, function(x){
       i <<- i +1
       cat("\r[INFO]", round((i/j)*100, digits=2), "%")
       return(tglow.mod.zscore(x))
     })
   } else if (method == "z") {
-    ft <- apply(ft, 2, function(x){
+    ft[, features] <- apply(ft[, features], 2, function(x){
       i <<- i +1
       cat("\r[INFO]", round((i/j)*100, digits=2), "%")
       return(scale(x, center=T, scale=T))
@@ -428,16 +451,17 @@ tglow.normalize <- function(dataset, method="mod.z", features=NULL, assay.out="c
     # NEW SCRIPT THAT KEEPS FEATURES IN DATAFRAME - BUT CHANGES output$features
     dataset$features$analyze_norm <- dataset$features$analyze
     cat("[INFO] Checking for NA's\n")
-    dataset$features$analyze_norm[colSums(is.na(ft)) > 0] <- F # Set features with NAs as F
+    dataset$features$analyze_norm[colSums(is.na(ft[, features])) > 0] <- F # Set features with NAs as F
+
     cat("[INFO] Checking for zero variances\n")
-    dataset$features$analyze_norm[Rfast::colVars(ft) == 0] <- F # Set features with zero variance as F
-    dataset$features$analyze_norm[colVars(as.matrix(ft)) == 0] <- F # Set features with zero variance as 
+    dataset$features$analyze_norm[Rfast::colVars(ft[, features]) == 0] <- F # Set features with zero variance as F
+    dataset$features$analyze_norm[colVars(as.matrix(ft[, features])) == 0] <- F # Set features with zero variance as 
 
   }
   
   # Transform to dataframe add back Image_ImageNumber_Global
   ft <- as.data.frame(ft)
-  ft$Image_ImageNumber_Global <- ids
+  #ft$Image_ImageNumber_Global <- ids
 
   dataset[[assay.out]] <- ft
   
@@ -445,10 +469,11 @@ tglow.normalize <- function(dataset, method="mod.z", features=NULL, assay.out="c
 }
 
 
+
 #-------------------------------------------------------------------------------
 #' Detect outlier cells in PCA space
 #' 
-#' SEE FUNCTION BELOW FOR AN UPDATED ONE BY JULIE
+#' SEE FUNCTION BELOW FOR AN UPDATED ONE BY JULIE [more annotated]
 #' 
 tglow.pca.outliers.deprecated <- function(dataset, assay = "cells_transform", grouping=NULL, pc.thresh=0.5, pc.max=500, pc.n=NULL, threshold=3.5, features=NULL, features.col = "analyze", method="z", renormalize=T) {
   
@@ -465,7 +490,7 @@ tglow.pca.outliers.deprecated <- function(dataset, assay = "cells_transform", gr
   } 
 
   # Check that the assay is there
-  if (assay %in% names(dataset)) {
+  if (!assay %in% names(dataset)) {
 
       stop(paste0("Assay not found: ", assay))
 
@@ -659,7 +684,7 @@ tglow.pca.outliers <- function(dataset,
     # Now for each group
     for (group in unique(grouping)) {
       
-      cat("[INFO] Calculating PC's for ", group, "\n")
+      cat("[INFO] Calculating for ", group, "\n")
       
       # Subset data
       cur.data <- data[grouping==group, features]
@@ -677,13 +702,13 @@ tglow.pca.outliers <- function(dataset,
         
         cur.data <- apply(cur.data, 2, tglow.mod.zscore)
         
-       } else if (method == "z") {
-         
+      } else if (method == "z") {
+        
         cur.data <- apply(cur.data, 2, scale, center=T, scale=T)
-      
+        
       }
-    
-     # Remove features of low variance
+      
+      # Remove features of low variance
       cat("[INFO] Removing Features of Low Variance for ", group, "\n")
       
       cur.data <- cur.data[,colSums(is.na(cur.data)) == 0]
@@ -715,7 +740,7 @@ tglow.pca.outliers <- function(dataset,
       }
       
       # Calculate PCAs
-      pca      <- irlba::prcomp_irlba(cur.data, n=pc.final, center=T, scale=T, )
+      pca      <- irlba::prcomp_irlba(cur.data, n=pc.final, center=F, scale=F)
       
       # Selecting n.pcs or number of PCs that explain x of the variance
       if (is.null(pc.n)) {
@@ -757,7 +782,7 @@ tglow.pca.outliers <- function(dataset,
       outliers[grouping==group] <- rowSums(abs(pcs.norm) < threshold) != pc.n
       pc.n <- NULL
       
-    
+      
     }
     
   }
@@ -863,11 +888,10 @@ fcolScale <- function(x,
 
 #-------------------------------------------------------------------------------
 #' Correct for plate effects for example and return corrected dataframe
-#' 
+#' Updated by jm52 to return a dataframe of the same structure as output$cells so we can still use output$features$analyze
 #'
 
-
-tglow.correct <- function(dataset, assay = "cells", to.correct = "plate_id", features = NULL){
+tglow.correct <- function(dataset, assay = "cells", to.correct = "plate_id", assay.out = "cells_corrected", features = NULL){
   
   # Defining the features 
   if (is.null(features)) {
@@ -875,46 +899,40 @@ tglow.correct <- function(dataset, assay = "cells", to.correct = "plate_id", fea
     features <- features[features %in% colnames(dataset[[assay]])]
   } 
   
-  # Getting only the cells and removing the NAs
-  cur.cells <- na.omit(dataset[[assay]])
-  ids <- cur.cells$Image_ImageNumber_Global # store for later use
+  # Getting only the cells and features of interest and removing the NAs
+  cur.cells <- na.omit(dataset[[assay]][, features])
   
-  # Find variable to correct for in meta 
-  z <- dataset$meta[cur.cells$Image_ImageNumber_Global, to.correct]
-  
-  # Select the features of interest
-  cur.cells <- cur.cells[,features]
-  
-  # Make a dataframe to store plate name. Each new column will be a corrected feature
-  df <- data.frame(z = z)
+  # Make a basic dataframe with our variable to correct (z) for the function [so we do z ~ f]
+  df <- data.frame(z = temp$meta[dataset[[assay]]$Image_ImageNumber_Global, to.correct])
   
   i <- 0 # tracking of progress
   j <- ncol(cur.cells) # tracking of progress
   
-  residuals <- data.frame(matrix(nrow = nrow(cur.cells), ncol =0))
+  # Create a dataframe of the original structure -> in the loop, replace relevant columns with residuals
+  residuals <- dataset[[assay]]
   
   # For each feature, make a temporary df (data) and correct for the feature, add the residuals of the model as the new data
   for(y in seq_along(colnames(cur.cells))){
     
-        i <- i +1
-        cat("\r[INFO]", round((i/j)*100, digits=2), "%")
-        
-        # Prepare dataframe
-        data <- df
-        data$y <- cur.cells[, y]
-        
-        # Run the linear models
-        l1 <- lm(y ~ z, data = data)
-        
-        feature <- colnames(cur.cells)[y]
-        residuals[[feature]] <- residuals(l1)
+    i <- i +1
+    cat("\r[INFO]", round((i/j)*100, digits=2), "%")
+    
+    # Prepare dataframe
+    data <- df
+    data$y <- cur.cells[, y]
+    
+    # Run the linear models
+    l1 <- lm(y ~ z, data = data)
+    
+    feature <- colnames(cur.cells)[y]
+    residuals[[feature]] <- residuals(l1)
     
   }
   
-  # Add back IDs
-  residuals$Image_ImageNumber_Global <- ids
+  # Add it back to the dataset whilst keeping the same structure as the original assay
+  dataset[[assay.out]] <- residuals
   
-  return(residuals)
+  return(dataset)
   
   
 }
@@ -922,24 +940,23 @@ tglow.correct <- function(dataset, assay = "cells", to.correct = "plate_id", fea
 
 #-------------------------------------------------------------------------------
 #' Correct for plate effects for example PER GROUP and return corrected dataframe
-#' 
+#' Updated to keep the same structure as the original dataframe, so we can use output$features$analyze
 #'
 
 
-tglow.correct.group <- function(dataset, assay = "cells", to.correct = "plate_id", features = NULL, group = "plate"){
+tglow.correct.group <- function(dataset, assay = "cells", assay.out = "cells_corrected", to.correct = "plate_id", features = NULL, group = "plate"){
   
   # Defining the features 
   if (is.null(features)) {
     features <- dataset$features$id[dataset$features$analyze]
     features <- features[features %in% colnames(dataset[[assay]])]
   } 
-
-  features <- features[features %in% colnames(dataset[[assay]])]
+  
+  # Make a dataframe to keep all of the data [same structure as original df]
+  residuals <- dataset[[assay]]
   
   # Find the groups 
   groups <- unique(dataset$meta[[group]])
-  
-  res.list <- list()
   
   # Extract cells, subset to each group & remove NAs
   for(g in groups){
@@ -951,56 +968,45 @@ tglow.correct.group <- function(dataset, assay = "cells", to.correct = "plate_id
     
     temp <- tglow.filter.img.apply(dataset, imgs.to.keep)
     
+    # Initialize residuals for the current group
+    residuals.group <- temp[[assay]]
+    
     # Getting only the cells and removing the NAs
-    cur.cells <- na.omit(temp[[assay]])
-    ids <- cur.cells$Image_ImageNumber_Global # store for later use
+    cur.cells <- na.omit(temp[[assay]][, features])
     
-    # Find variable to correct for in meta 
-    z <- temp$meta[cur.cells$Image_ImageNumber_Global, to.correct]
-    
-    # Select the features of interest
-    cur.cells <- cur.cells[,features]
-    
-    # Make a basic dataframe for the function [so we do z ~ f]
-    df <- data.frame(z = z)
-    
+    # Make a basic dataframe with our variable to correct (z) for the function [so we do z ~ f]
+    df <- data.frame(z = temp$meta[temp[[assay]]$Image_ImageNumber_Global, to.correct])
+  
     i <- 0 # tracking of progress
     j <- ncol(cur.cells) # tracking of progress
     
-    # Make a dataframe to keep all of the data
-    residuals <- data.frame(matrix(nrow = nrow(cur.cells), ncol =0))
-    
-    # For each feature, make a temporary dataframe and correct for the feature, add the residuals of the model as the new data
+    # For each feature, make a temporary dataframe and correct for the feature & add the residuals 
     for(y in seq_along(colnames(cur.cells))){
-            
-            i <- i +1
-            cat("\r[INFO]", round((i/j)*100, digits=2), "%")
-            
-            # Prepare dataframe
-            data <- df
-            data$y <- cur.cells[, y]
-            
-            # Run the linear models
-            l1 <- lm(y ~ z, data = data)
-            
-            feature <- colnames(cur.cells)[y]
-            residuals[[feature]] <- residuals(l1)
+      
+      i <- i +1
+      cat("\r[INFO]", round((i/j)*100, digits=2), "%")
+      
+      # Prepare dataframe
+      data <- df
+      data$y <- cur.cells[, y]
+      
+      # Run the linear models
+      l1 <- lm(y ~ z, data = data)
+      
+      feature <- colnames(cur.cells)[y]
+      residuals.group[[feature]] <- residuals(l1)
       
     }
     
-    # Add back IDs
-    residuals$Image_ImageNumber_Global <- ids
-    
     # Add it to the list of groups
-    res.list[[g]] <- residuals
+    residuals[rownames(residuals.group), colnames(residuals.group)] <- residuals.group
     
     
   }
   
-  # Put it all in a single dataframe
-  res <- do.call(rbind, res.list)
+  dataset[[assay.out]] <- residuals
   
-  return(res)
+  return(dataset)
   
   
 }
@@ -1009,52 +1015,45 @@ tglow.correct.group <- function(dataset, assay = "cells", to.correct = "plate_id
 #' Function to transform data using boxcox
 #' c is the column you want to transform
 
-
-tglow.transform.bc <- function(c, tracking = T){
-
+tglow.transform.bc <- function(c, tracking = T, return.lambda = F, limit = 5){
   
-if(tracking == T){
-  # Increment the global counter
-  i <<- i + 1
-  
-  # Print the progress
-  cat("\r[INFO]", round((i/j)*100, digits=2), "%")
+  if(tracking == T){
+    # Increment the global counter
+    i <<- i + 1
+     
+    # Print the progress
+    cat("\r[INFO]", round((i/j)*100, digits=2), "%")
 
-}
+  }
 
   # If is not positive - then offset to make everything positive
-  if(any(c <= 0)){
-    
-    c <- abs(min(c, na.rm=T)) + c + 1
-    
-  }
+  if(any(c <= 0) == T) { c <- abs(min(c, na.rm=T)) + c + 1 }
   
   # Create data to estimate transformation parameters
   y <- c[cells] # subset 50K cells
   #x <- rep(1, length(y)) # make everything a 1
   
   # Estimate transformation parameters
-  bc <- MASS::boxcox(y ~  1, plotit = F) # don't plot lambda outcome
+  bc     <- MASS::boxcox(y ~  1, plotit = F,  lambda = seq(-limit, limit, 1/10)) # don't plot lambda outcome
   lambda <- bc$x[which.max(bc$y)]
-  
-  # Define fudge: uncertainty value so that anything within that range becomes the closest value
-  fudge <- 0.1
-  
-  # Transform data
-  if(lambda < fudge & lambda > -fudge){ # If the data is in between -0.2 & 0.2, then just do a log
-    
-    t <- log(c)
-    
-  } else if (lambda < (1 + fudge) & lambda > (1 - fudge)){ # If the data is in still between -1.2 & 1.2, then just leav it
-    
-    t <- c
-    
-  } else { # Otherwise use the calculated lambda
-    
-    t <- (c^lambda - 1)/lambda
-    
+
+  # If return lambda or transformed values
+  if(return.lambda){
+      return(lambda)
+  } else {
+      # Define fudge: uncertainty value so that anything within that range becomes the closest value
+      fudge <- 0.1
+      
+      # Transform data
+      if(lambda < fudge & lambda > -fudge) { # If the data is in between -0.1 & 0.1, then just do a log
+        t <- log(c)
+      } else if (lambda < (1 + fudge) & lambda > (1 - fudge)) { # If the data is in still between -1.2 & 1.2, then just leav it
+        t <- c       
+      } else { # Otherwise use the calculated lambda   
+        t <- (c^lambda - 1)/lambda
+      }
+      
+      return(t)
   }
-  
-  t
   
 }

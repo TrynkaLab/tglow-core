@@ -72,6 +72,7 @@ tglow.plot.location.hex <- function(cells,
                                     zlab="Z",
                                     main=NULL,
                                     bins=30,
+                                    scale.to.well.mean=F,
                                     scale.z=F,
                                     trim.outliers.z=F,
                                     trim.outliers.z.thresh=3.5,
@@ -86,12 +87,15 @@ tglow.plot.location.hex <- function(cells,
   if (trim.outliers.z) {
     df.plot <- df.plot[abs(tglow.mod.zscore(df.plot$z)) < trim.outliers.z.thresh,]
   }
+
+  if (scale.to.well.mean) {
+    df.plot$z <- df.plot$z / mean(df.plot$z)
+  }
   
   if (scale.z) {
     df.plot$z <- scale(df.plot$z)
   }
-  
-  
+
   p1 <- ggplot(data=df.plot,
               mapping=aes(x=x, y=y, z=z)) +
     stat_summary_hex(fun = function(x){ if (length(x) > bins.mincount){mean(x)} else {return(NA)}},
@@ -601,27 +605,44 @@ tglow.plot.xy <- function(x, y, xlab="X", ylab="Y", main=NA, main.prefix="", siz
 
 #------------------------------------------------------------------------------
 #' Simple heatmap with auto labels
-tglow.plot.simple.hm <- function(data, cellsize=-1, cellwidth=12, cellheight=12, limit=NULL, cluster=T, range="symmetric", min.value=0, palette=NULL, border=NA, ...) {
+tglow.plot.simple.hm <- function(data, cellsize=-1, cellwidth=12, cellheight=12, limits=NULL, cluster=T, range="symmetric", min.value=0, palette=NULL, border=NA, ...) {
   
   if (cellsize > 0) {
     cellwidth  <-  cellsize
     cellheight <- cellsize
   }
   
+  if (is.null(limits)) {
+    max <- max(data)
+    min <- min(data)
+    max.abs <- max(abs(data))
+    min.abs <- min(abs(data))
+  } else {
+    if(length(limits) ==2) {
+        max <- limits[2]
+        min <- limits[1]
+        max.abs <- max(abs(limits))
+        min.abs <- min(abs(limits))
+        range = "auto"
+    } else {
+      stop("[ERROR] Limits must be a vector of length 2")
+    }
+  }
+  
   if (range == "symmetric") {
-    break.list <- seq(-max(abs(data)), max(abs(data)), by=max(abs(data))/100)
+    break.list <- seq(-max.abs, max.abs, by=max.abs/50)
     if (is.null(palette)) {palette="RdBu"}
     cols       <- colorRampPalette(rev(brewer.pal(n=7, name =palette)))(length(break.list))
   } else if (range == "absolute") {
     if (is.null(palette)) {palette="Reds"}
-    break.list <- seq(min.value, max(abs(data)), by=max(abs(data))/100)
+    break.list <- seq(min, max.abs, by=(max.abs-min.abs)/100)
     cols       <- colorRampPalette(c("#FFFFFF",brewer.pal(n=7, name =palette)))(length(break.list))
   } else if (range == "auto") {
-    break.list <- seq(-min(data), max(data), by=max(abs(data))/100)
+    break.list <- seq(min, max, by=(max-min)/100)
     if (is.null(palette)) {palette="RdBu"}
     cols       <- colorRampPalette(rev(brewer.pal(n=7, name =palette)))(length(break.list))
   } else  {
-    cat("[ERROR] range must be symmetric, auto, or aboslute\n")
+    stop("[ERROR] range must be symmetric, auto, or aboslute\n")
   }
   
   if (!cluster) {

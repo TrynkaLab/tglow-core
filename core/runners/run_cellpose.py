@@ -113,7 +113,7 @@ class CellposeRunner():
             log.debug(f"cell shape: {data_cell.shape}")
             
         # Read channel with nucleus signal
-        if self.nucl_channel and self.use_nucl_for_declump:
+        if self.nucl_channel:
             query.channel = self.nucl_channel
             log.debug(f"Processing nucl channel: {query.channel}")
 
@@ -123,6 +123,7 @@ class CellposeRunner():
                 data_nucl = np.max(data_nucl, axis=0)
                 log.debug(f"nucl shape: {data_nucl.shape}")
         
+        if self.nucl_channel and self.use_nucl_for_declump:
             # Combine into stack
             img = np.stack([data_cell, data_nucl], axis=-1)
             channel_axis=3
@@ -157,11 +158,14 @@ class CellposeRunner():
         
         start_time = time.time()
         
-        if (self.nucl_channel is not None):
-            if (self.do_3d):
-                nucl = img[:,:,:,1]
+        if self.nucl_channel is not None:
+            if self.use_nucl_for_declump:
+                if self.do_3d:
+                    nucl = img[:,:,:,1]
+                else:
+                    nucl = img[:,:,1]
             else:
-                nucl = img[:,:,1]
+                nucl = data_nucl
             
             masks, flows, styles, diams = model.eval(nucl,
                                                     diameter=self.diameter_nucl,

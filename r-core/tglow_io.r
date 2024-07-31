@@ -7,15 +7,31 @@ FILESET_ID=0
 #' Matches images based on <plate>, <well>, <field>
 #' 
 #' @param path path to tglow output dir
-tglow.read.dir <- function(path, exp.suffix="_experiment.tsv", n=NULL, verbose=F, ...) {
+#' @param pattern The pattern that uniquely identfies a well. Use .zip for type B and the _experiment.tsv
+#' for type A.
+#' @param type Must be A or B. 
+#' Type A: _cells.tsv, _image.tsv, _experiment.tsv and _objectRelations.tsv.
+#' See tglow.read.fileset.a for detaills
+#' Type B: <plate>_<well>.zip with individual files for each child object. Main object is assumed to be _cells.
+#' see 
+#' See tglow.read.fileset.b for detaills
+#' @param n Read only the first n filesets detected.
+#' @param verbose Should I be chatty?
+#' @param ... Remaining parameters passed to tglow.read.fileset.a/b
+tglow.read.dir <- function(path, pattern, type, n=NULL, verbose=F, ...) {
   
   #f.cells <- list.files(path, recursive = T, pattern="*_cells.tsv")
   #f.exp   <- list.files(path, recursive = T, pattern="*_experiment.tsv")
   #f.img   <- list.files(path, recursive = T, pattern="*_image.tsv")
   #f.orel  <- list.files(path, recursive = T, pattern="*_objectRelation.ships.tsv")
   
-  files    <- list.files(path, recursive = T, pattern=paste0("*", exp.suffix), full.names = T)
-  prefixes <- gsub(exp.suffix, "", files)
+  files    <- list.files(path, recursive = T, pattern=paste0("*", pattern), full.names = T)
+  
+  if (type == "A") {
+    prefixes <- gsub(pattern, "", files)
+  } else {
+      prefixes <- files
+  }
   
   if (!is.null(n)) {
     prefixes <- prefixes[1:n]
@@ -31,23 +47,25 @@ tglow.read.dir <- function(path, exp.suffix="_experiment.tsv", n=NULL, verbose=F
   for (pre in prefixes) {
     i <- i + 1
     cat("\r[INFO] reading fileset ", i, "/", length(prefixes))
-    #filesets[[pre]] <- tglow.read.fileset(pre)
-    cur <- tglow.read.fileset(pre, return.feature.meta=F, ...)
-    #cur <- tglow.read.fileset(pre, return.feature.meta=F, pat.img = "_images.tsv")
+    
+    if (type == "A") {
+        cur <- tglow.read.fileset.a(pre, return.feature.meta=F, ...)
+    } else if (type == "B") {
+        cur <- tglow.read.fileset.b(pre, return.feature.meta=F, ...)
+    } else {
+      stop(paste0("Invalid type: ", type))
+    }
     filesets[[pre]] <- cur
     
     if (verbose){
         cat("\n[DEBUG] cols:", ncol(cur$cells), " cols meta", ncol(cur$meta), " cols orl:", ncol(cur$orl), "\n")
     }
-    #if(length(output) == 0) {
-    #  output <- cur 
-    #} else {
-      #output <- tglow.merge.filesets(list(output, cur))
-    #}
   }
   
   cat("\n[INFO] Merging filesets\n")
   output <- tglow.merge.filesets(filesets)
+  
+  cat("[INFO] names: ", names(output), "\n")
   
   # Read feature index
   #cat("[INFO] Reading features\n")
@@ -71,6 +89,8 @@ tglow.read.dir <- function(path, exp.suffix="_experiment.tsv", n=NULL, verbose=F
   return(c(output, list(features=features)))
 }
 
+
+
 #-------------------------------------------------------------------------------
 #' Build an index of where the example images are stored.
 #' This assumes images are organized as follows:
@@ -82,7 +102,7 @@ tglow.read.dir <- function(path, exp.suffix="_experiment.tsv", n=NULL, verbose=F
 #' @param plate_filter plate names to run
 #' @param pattern the pattern to match image names and then extract the fields (gsubbed away)
 
-#' @returns A data frame with the iamges
+#' @returns A data frame with the images
 tglow.build.img.index <- function(path, plate_filter=NULL, pattern=".ome.tiff$") {
   plates <- list.files(path, recursive = F)
   
@@ -189,8 +209,8 @@ tglow.read.binmat <- function(path) {
 #' @param feature.y The feature that describes the object pos in px in y
 #' @param feature.id The feature to use as the unique id to give to the output
 #' @param group.col The feature to match cells to img.index
-#' @param channels The channels to read. Vector of indices. (default NULL = all channels)
-#' @param planes The planes to read. Vector of indices. (default NULL = all planes)
+#' @param channels The channels to read. A list of Vector of indices per cycle. (default NULL = all channels)
+#' @param planes The planes to read.  A list of Vector of indices per cycle. (default NULL = all planes)
 #' @param max.project Should the stack be max projected per channel? (default TRUE)
 ##' @param ncores How many cores to use with parallels mcapply for reading
 #' 
@@ -211,10 +231,16 @@ tglow.read.imgs <- function(data,
   
   cur.cells <- data[[assay]]
   
-  if (max(cell.subset) > nrow(cur.cells)) {
-    stop("Index in cell.subset larger then number of rows in assay. Are you using the correct assay?")
+  if (class(cell.subset) == "numeric") {
+    if (max(cell.subset) > nrow(cur.cells)) {
+      stop("Index in cell.subset larger then number of rows in assay. Are you using the correct assay?")
+    }
   }
-  
+
+  if (class(cell.subset[1]) == "numeric") {
+    warning("cell.subset is numeric, make sure the indices are properly matched to assay.")
+  }
+    
   j <- 0
   out <- lapply(cell.subset, function(i) {
     cat("[INFO] Reading ", round((j / length(cell.subset))*100) ,"%\r")
@@ -230,14 +256,20 @@ tglow.read.imgs <- function(data,
     
     subset = list(X=cx, Y=cy)
     
-    if (!is.null(channels)) {
-      subset[["C"]] = channels
+    if (!is.null(channels)) {  
+      if (class(channels) != "list") {
+        stop("Channels must be a list with one numeric vector per cycle containing channel indices to load.")
+      }    
+      subset[["C"]] = channels[[1]]
     }
     
     if (!is.null(planes)) {
-      subset[["Z"]] = planes
+      if (class(planes) != "list") {
+        stop("Planes must be a list with one numeric vector per cycle containing plane indices to load.")
+      } 
+      subset[["Z"]] = planes[[1]]
     }
-    
+
     img <- read.image(cur.img$path, normalize=F, subset=subset)
     colorMode(img) = Grayscale
 
@@ -245,11 +277,27 @@ tglow.read.imgs <- function(data,
     if (!is.null(reg.index)) {
       cur.reg.index <- reg.index[reg.index$plate == cur.img$plate & reg.index$well == cur.img$well & reg.index$field == cur.img$field,]
       
+      
       for (p2 in 1:nrow(cur.reg.index)) {
         
         new.img <- img.index[paste0(cur.reg.index[p2, "plate2"], ":",
                                     cur.reg.index[p2, "well"], ":", 
                                     cur.reg.index[p2, "field"]),]
+        
+        if (!is.null(channels)) {
+            if (length(channels) != nrow(cur.reg.index) +1) {
+              stop("Length of channel list does not match the number of cycles found in reg.index")
+            }
+            subset[["C"]] = as.numeric(channels[[p2+1]])            
+        } 
+              
+        if (!is.null(planes)) {
+            if (length(planes) != nrow(cur.reg.index) +1) {
+              stop("Length of plane list does not match the number of cycles found in reg.index")
+            }
+            subset[["Z"]] = planes[[p2+1]]
+        }     
+        
         
         # Read the registration matrix
         reg <- tglow.read.binmat(cur.reg.index[p2, "path"])
@@ -403,11 +451,45 @@ tglow.read.imgs.deprecated  <- function(data, cell.subset, img.index, format="pn
   return(out)
 }
 
+#-------------------------------------------------------------------------------
+#' Add a global id to a matrix of image files.
+#' Matrix with column pattern 'ImageNumber', 'ObjectNumber' and 'Object_Number'
+#' which will be duplicated and have a globally unique variable added.
+#' Output of this is stored in the same column name but with suffix _Global
+add.global.ids <- function(matrix) {
+    
+  # Fetch global fileset id
+  global.prefix <- paste0("FS", FILESET_ID)
+  
+  # Image numbers
+  cols.i <- grep("ImageNumber",colnames(matrix), value=T)
+  
+  for (cur.col in cols.i) {
+    
+    selector <- !is.na(matrix[, cur.col])
+    matrix[selector,paste0(cur.col, "_Global")] <- paste0(global.prefix, "_I", matrix[selector, cur.col])
+  }
+  
+  # Object numbers
+  cols <- grep("ObjectNumber", colnames(matrix), value=T)
+  cols <- c(cols,grep("Object_Number", colnames(matrix), value=T))
+  
+  for (cur.col in cols) {
+    selector <- !is.na(matrix[, cur.col])
+    matrix[selector, paste0(cur.col,"_Global")] <- paste0(global.prefix, "_I", matrix[selector,cols.i[1]], "_O", matrix[selector, cur.col])
+  } 
+  
+  return(matrix)
+}
+
+
 
 #-------------------------------------------------------------------------------
-#' Read a cell level fileset
+#' Read a cell level fileset type A
 #' 
-#' Reads a CellProfiler (tglow) fileset into a list.
+#' Reads a CellProfiler fileset into a list.
+#' Type A: Assumes all features are in a single _cells.tsv / _cells.tsv
+#' and all features are matched
 #' 
 #' @returns list with data frames:
 #' - cells (cell level features)
@@ -415,7 +497,9 @@ tglow.read.imgs.deprecated  <- function(data, cell.subset, img.index, format="pn
 #' - objectRelations 
 #' - features [optional]
 #' Output is NULL if no cells are detected.
-tglow.read.fileset <- function(prefix, return.feature.meta=F, add.global.id=T,
+tglow.read.fileset.a <- function(prefix,
+                               return.feature.meta=F,
+                               add.global.id=T,
                                pat.img="_image.tsv",
                                pat.cells="_cells.tsv",
                                pat.orl="_objectRelationships.tsv") {
@@ -463,15 +547,16 @@ tglow.read.fileset <- function(prefix, return.feature.meta=F, add.global.id=T,
     
     # Cell level information
     #-----------
-    cells[,"Image_ImageNumber_Global"] <- paste0(global.prefix, "_I", cells[, "Image_ImageNumber"])
+    cells <- add.global.ids(cells)
+    #cells[,"Image_ImageNumber_Global"] <- paste0(global.prefix, "_I", cells[, "Image_ImageNumber"])
     
-    cols <- grep("ObjectNumber", colnames(cells), value=T)
-    cols <- c(cols,grep("Object_Number", colnames(cells), value=T))
+    #cols <- grep("ObjectNumber", colnames(cells), value=T)
+    #cols <- c(cols,grep("Object_Number", colnames(cells), value=T))
     
-    for (cur.col in cols) {
-      cells[, paste0(cur.col,"_Global")] <- paste0(global.prefix, "_I", cells[,"Image_ImageNumber"], "_O", cells[, cur.col])
-    } 
-    
+    #for (cur.col in cols) {
+    #  cells[, paste0(cur.col,"_Global")] <- paste0(global.prefix, "_I", cells[,"Image_ImageNumber"], "_O", cells[, cur.col])
+    #} 
+        
     # IMG image level information
     #-----------
     img[,"ImageNumber_Global"] <- paste0(global.prefix, "_I", img[, "ImageNumber"])
@@ -493,4 +578,149 @@ tglow.read.fileset <- function(prefix, return.feature.meta=F, add.global.id=T,
   } else {
     return(out.list)
   }
+}
+
+#-------------------------------------------------------------------------------
+#' Read a cell level fileset type B
+#' 
+#' Reads a zip file with cellprofiler features, each file other then
+#' _Image, _Experiment and _Object Relationships are assumed to be an object.
+#' Will match objects on order with an appropriate matching strategy.
+#' 
+#' @returns list with data frames:
+#' - cells (cell level features)
+#' - meta (image level features)
+#' - objectRelations 
+#' - features [optional]
+#' Output is NULL if no cells are detected.
+tglow.read.fileset.b <- function(prefix,
+                                 return.feature.meta=F,
+                                 add.global.id=T,
+                                 merging.strategy="mean",
+                                 parent.col="Parent_cell",
+                                 pat.exp=".*Experiment.txt",
+                                 pat.img=".*Image.txt",
+                                 pat.cells=".*cell.txt",
+                                 pat.orl=".*Object relationships.txt",
+                                 pat.others="^.*_([a-z]+).txt$") {
+  
+  if (add.global.id) {
+    assign("FILESET_ID", FILESET_ID + 1, envir = .GlobalEnv)
+    global.prefix <- paste0("FS", FILESET_ID)
+  }
+  
+  index          <- unzip(prefix, list=T)
+  index$FileName <- basename(index$Name)
+
+  # Read content of _cells.tsv
+  cells <- read.table(unz(prefix,
+                          index[grep(pat.cells, index$FileName), "Name"]),
+                      stringsAsFactors = F,
+                      header=T,
+                      sep="\t")
+
+  # Read _image.tsv (metadata)
+  img <- read.table(unz(prefix,
+                          index[grep(pat.img, index$FileName), "Name"]),
+                    stringsAsFactors = F,
+                    header=T,
+                    sep="\t")
+  
+  # Read _objectRelation.ships.tsv
+  orl <- read.table(unz(prefix,
+                        index[grep(pat.orl, index$FileName), "Name"]),
+                    stringsAsFactors = F,
+                    header=T,
+                    sep="\t")  
+  
+  
+  exclude <- c(grep(pat.cells, index$FileName),
+               grep(pat.img, index$FileName),
+               grep(pat.orl, index$FileName),
+               grep(pat.exp, index$FileName))
+  
+  index <- index[!1:nrow(index) %in% exclude,]
+  
+  colnames(cells) <- paste0("cell_", colnames(cells))
+  rownames(cells) <- paste0(cells$cell_ImageNumber, "_", cells$cell_ObjectNumber)
+  
+  children <- list()
+  if (nrow(index) > 0) {
+    index$object <- gsub(pat.others, "\\1",index$FileName)
+    
+    for (i in 1:nrow(index)) {
+      cur <- read.table(unz(prefix,
+                            index[i, "Name"]),
+                        stringsAsFactors = F,
+                        header=T,
+                        sep="\t")  
+      
+      #if (add.global.id) {
+      #  cur <- add.global.ids(cur)
+      #}
+      
+      if (merging.strategy == "mean") {
+        
+        obj              <- index[i, "object"]
+        cur              <- cur[cur[,parent.col] != 0,]
+        colnames(cur)    <- paste0(obj, "_", colnames(cur))
+        selector         <- paste0(cur[,paste0(obj, "_ImageNumber")], "_", cur[,paste0(obj, "_", parent.col)])
+        
+        counts            <- table(selector)
+        exclude.cols      <- c("Group.1", grep("ObjectNumber", colnames(cur), value=T), grep("Number_Object_Number", colnames(cur), value=T))
+
+        tmp               <- aggregate(cur, by=list(selector), FUN=mean, na.rm=T)
+        rownames(tmp)     <- tmp$Group.1
+        tmp[,paste0(obj, "_QC_Object_Count")] <- counts[tmp$Group.1]
+        tmp               <- tmp[, !colnames(tmp) %in% exclude.cols]
+        cells[selector,colnames(tmp)] <- tmp[selector,]
+        
+      } else if(merging.strategy == "none") {
+        if (add.global.id) {cur <- add.global.ids(cur)}
+        children[[index[i, "object"]]] <- cur
+      } else {
+        stop("Only valid merging strategy is 'mean' or 'none'")
+      }
+      
+    }
+  } 
+
+  # Standardize ID's across filesets into the following format
+  # FS#I#O#
+  # where FS = file set, I = image within fileset and O = object within image
+  # This makes it easier to match across data with a unique ID
+  if (add.global.id) {
+    
+    # Cell level information
+    #-----------
+    cells <- add.global.ids(cells)
+    
+    # IMG image level information
+    #-----------
+    img[,"ImageNumber_Global"] <- paste0(global.prefix, "_I", img[, "ImageNumber"])
+    # ORL, object relationships
+    #-----------
+    if (nrow(orl) > 0) {
+      orl[,"First.Image.Number.Global"]   <- paste0(global.prefix, "_I", orl[, "First.Image.Number"])
+      orl[,"First.Image.Number.Global"]   <- paste0(global.prefix, "_I", orl[, "First.Image.Number"])
+      orl[,"First.Object Number.Global"]  <- paste0(global.prefix, "_I", orl[, "First.Image.Number"], "_O", orl[, "First.Object.Number"])
+      orl[,"First.Object Number.Global"]  <- paste0(global.prefix, "_I", orl[, "First.Image.Number"], "_O", orl[, "First.Object.Number"])
+    }
+  }
+  
+  if(return.feature.meta) {
+    feature.meta <- tglow.get.feature.meta.from.cells(colnames(cells))
+  }  
+  
+  out.list <- list(cells=cells, meta=img, orl=orl)
+  
+  if(return.feature.meta) {
+    out.list <- c(out.list, list(features=feature.meta))
+  } 
+  
+  if (length(children) > 0 ) {
+      out.list <- c(out.list, list(children=children))
+  }
+  
+  return(out.list)
 }

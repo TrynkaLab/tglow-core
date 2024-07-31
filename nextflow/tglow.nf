@@ -276,6 +276,8 @@ process deconvolute {
         if (params.rn_max_project) {
             cmd += " --max_project"
         }
+        
+        cmd
 }
 
 // Run a cellprofiler run
@@ -290,7 +292,9 @@ process cellprofiler {
     input:
         tuple val(plate), val(key), val(well), val(row), val(col), path(cell_masks), path(nucl_masks), val(merge_plates), path(registration), val(basicpy_string)
     output:
-        path "features/$plate/$row/$col/*.tsv"
+        //path "features/$plate/$row/$col/*.tsv"
+        //path "features/$plate/$row/$col/*.txt"
+        path "features/$plate/$row/$col/*.zip"
     script:
         // Outputs the cp files into ./images
         cmd = 
@@ -334,7 +338,6 @@ process cellprofiler {
             cmd += "\nmv " + nucl_masks.join(" ") + " ./images/$plate/$row/$col/"
         }
          
-         
         //cmd += "\ntouch done.tsv"     
         //cmd
 
@@ -359,6 +362,16 @@ process cellprofiler {
             cmd += " -p $params.cpr_pipeline_3d"
         }      
         
+        // Zip output to save of lustre filecount
+        if (!params.cpr_no_zip) {
+            cmd +=
+            """
+            
+            zip -r ./features/$plate/$row/$col/${plate}_${well}.zip ./features/$plate/$row/$col/*.txt
+            
+            """
+        }
+
         cmd
 }
 
