@@ -12,6 +12,7 @@ setClass("TglowAssay",
 setClass("TglowDataset",
          slots=list(assays="list",
                     meta="data.frame",
+                    object.ids="character",
                     image.meta="data.frame",
                     image.data="TglowAssay",
                     image.ids="character",
@@ -101,6 +102,7 @@ function(x, i, j, drop=F) {
     
     # Filter meta
     object@meta          <- object@meta[i,,drop=F]
+    object@object.ids    <- object@object.ids[i, drop=F]
     
     # Select images
     object@image.ids     <- object@image.ids[i,drop=F]

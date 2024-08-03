@@ -83,7 +83,7 @@ tglow.composite.image <- function(images, colors) {
 #' @param imgs A list of EBImage objects, with 3 or 4 dimensions. 3d dimension
 #' is assumed to be channel.
 #' @returns A vector with the max values in each channel
-tglow.max.per.channel <- function(imgs, channel.dim=3) {
+tglow.max.per.channel <- function(imgs, channel.dim=3, q=1) {
   
   channel.dim <- 3
   max         <- c(rep(0, dim(imgs[[1]])[channel.dim]))
@@ -91,15 +91,16 @@ tglow.max.per.channel <- function(imgs, channel.dim=3) {
   for (img in imgs) {
     if (length(dim(img)) == 3) {
       for (ch in 1:dim(img)[channel.dim]) {
-        if (max(img[,,ch]) > max[ch]) {
-          max[ch] <- max(img[,,ch])
+        if (quantile(img[,,ch], probs=q) > max[ch]) {
+          max[ch] <- quantile(img[,,ch], probs=q)
         }
       }
     } else if (length(dim(img)) == 4) {
       for (ch in 1:dim(img)[channel.dim]) {
-        if (max(img[,,ch,]) > max[ch]) {
-          max[ch] <- max(img[,,ch,])
+        if (quantile(img[,,ch,], probs=q) > max[ch]) {
+          max[ch] <- quantile(img[,,ch,], probs=q)
         }
+
       }
     } else {
       stop(paste0(dim(img)," is not a valid number of dimensions for an image. "))
@@ -116,11 +117,11 @@ tglow.max.per.channel <- function(imgs, channel.dim=3) {
 #' is assumed to be channel.
 #' @param norm.factors Value to divide the images by.
 #' Defaults to NULL in which case tglow.max.per.channel is called
-tglow.norm.img <- function(imgs, norm.factors=NULL) {
+tglow.norm.img <- function(imgs, norm.factors=NULL, q=1) {
   
   if (is.null(norm.factors)) {
     cat("[INFO] Calculating norm factors\n")
-    norm.factors <- tglow.max.per.channel(imgs)
+    norm.factors <- tglow.max.per.channel(imgs, q=q)
   }
   
   if (length(dim(imgs[[1]])) == 3) {

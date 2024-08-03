@@ -134,7 +134,7 @@ tglow.filter.cells.calc <- function(dataset, filter.table, assay="cells", featur
       cur.data <- t(cur.data)
     }
     
-    res[, cur.filter.name] <- do.call(cur.filter, list(data=cur.data,
+    res[, cur.filter.name] <- do.call(cur.filter, list(vec=cur.data,
                                                        thresh=filter.table[i, "value"],
                                                        grouping=grouping))
   }
@@ -149,7 +149,7 @@ tglow.filter.cells.calc <- function(dataset, filter.table, assay="cells", featur
 #' @param res A data frame, matrix or vector with booleans describing which cells to keep.
 #' @returns 
 #' A tglow dataset with the cells, image and object relation matrix filtered
-tglow.filter.cells.apply <- function(dataset, res) {
+tglow.filter.cells.apply <- function(dataset, res, img.id.col="Image_ImageNumber_Global") {
   
   if (class(res)[1] == "data.frame" | class(res)[1] == "matrix") {
     selector <- rowSums(res)==ncol(res)
@@ -166,7 +166,7 @@ tglow.filter.cells.apply <- function(dataset, res) {
     dataset$cells_norm <-  dataset$cells_norm[selector,]
   }
   
-  img.nr <- unique(dataset$cells$Image_ImageNumber_Global)
+  img.nr <- unique(dataset$cells[,img.id.col])
   dataset$meta <- dataset$meta[dataset$meta$ImageNumber_Global %in% img.nr,]
   
   obj.nr <- unique(as.character(unlist(dataset$cells[,grep("Object_Number_Global",colnames(dataset$cells))])))
@@ -250,8 +250,8 @@ filter.na <- function(vec, thresh, grouping=NULL) {
   return((sum(is.na(vec))/length(vec)) < thresh)
 }
 
-filter.na.multicol <- function(data, thresh, grouping) {
-  res <- apply(data, 2, filter.na, thresh=thresh, grouping=grouping)
+filter.na.multicol <- function(vec, thresh, grouping) {
+  res <- apply(vec, 2, filter.na, thresh=thresh, grouping=grouping)
   return(res)
 }
 
@@ -277,8 +277,8 @@ filter.inf <- function(vec, thresh=NULL, grouping=NULL) {
   return(sum(is.infinite(vec)) <= thresh)
 }
 
-filter.inf.mutlicol <- function(data, thresh, grouping) {
-  res <- apply(data, 2, filter.inf, thresh=thresh, grouping=grouping)
+filter.inf.mutlicol <- function(vec, thresh, grouping) {
+  res <- apply(vec, 2, filter.inf, thresh=thresh, grouping=grouping)
   return(res)
 }
 
@@ -299,28 +299,28 @@ filter.mod.z <- function(vec, thresh, grouping=NULL, absolute=T, method="mod.z")
 
 Met <- function(...) {filter.sum(..., func=filter.mod.z)}
 
-filter.mod.z.perc <- function(data, thresh, thresh2, grouping=NULL) {
+filter.mod.z.perc <- function(vec, thresh, thresh2, grouping=NULL) {
   
   i <- 0
-  j <- ncol(data)
+  j <- ncol(vec)
   cat("\n[INFO] Normalizing features per group.\n")
   
-  res <- apply(data, 2, function(x){
+  res <- apply(vec, 2, function(x){
     i <<- i +1
     cat("\r[INFO]", round((i/j)*100, digits=2), "%")
     return(filter.mod.z(x, thresh=thresh, grouping=grouping))
   })
   cat("\n[INFO] Done normalizing per group. Calculating percentages per cell\n")
-  return((rowSums(res, na.rm=T)/ncol(data)) >= thresh2)
+  return((rowSums(res, na.rm=T)/ncol(vec)) >= thresh2)
 }
 
 #-------------------------------------------------------------------------------
 #' If data is multicolumn, take the sum over all collumns, if one is false, exlcude
-filter.sum <- function(data, thresh, grouping, func) {
-  res <- apply(data, 2, func, thresh=thresh, grouping=grouping)
+filter.sum <- function(vec, thresh, grouping, func) {
+  res <- apply(vec, 2, func, thresh=thresh, grouping=grouping)
   
   res[is.na(res)] <- T
   
-  return(rowSums(res, na.rm=T) == ncol(data))
+  return(rowSums(res, na.rm=T) == ncol(vec))
 }
 

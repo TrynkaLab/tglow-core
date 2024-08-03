@@ -12,7 +12,7 @@ from matplotlib import pyplot as plt
 from scipy import ndimage as ndi
 from tglow.io.tglow_io import AICSImageReader, BlacklistReader
 from tglow.utils.tglow_utils import float_to_16bit_unint
-from skimage.filters import threshold_otsu
+from skimage.filters import threshold_otsu, gaussian
 
 # Plot results from basicpy fit
 def plot_basic_results(basic, filename):
@@ -66,7 +66,7 @@ log.setLevel(logging.DEBUG)
 
 class BasicpyTrainer():
     
-    def __init__(self, path, output_dir, output_prefix,  channel,  nimg, merge_n, tune, fit_darkfield, all_planes=False, max_project=False, plates=None, fields=None, planes=None, threshold=False, autosegment=False, plot=False, blacklist=None, pseudoreplicates=0):
+    def __init__(self, path, output_dir, output_prefix,  channel,  nimg, merge_n, tune, fit_darkfield, all_planes=False, max_project=False, plates=None, fields=None, planes=None, threshold=False, autosegment=False, plot=False, blacklist=None, pseudoreplicates=0, blur=False, sigma=2):
         
         self.path=path
         self.channel=channel
@@ -97,6 +97,10 @@ class BasicpyTrainer():
         self.blacklist = blacklist
         
         self.pseudoreplicates = pseudoreplicates
+        
+        self.blur=blur
+        
+        self.sigma=sigma
             
     def train(self):
         
@@ -182,6 +186,14 @@ class BasicpyTrainer():
                 i+=1
             
             training_imgs = training_imgs_tmp
+            
+        # Apply a gaussian blur to the images prior to running bp
+        if self.blur:
+            i=0
+            while i < len(training_imgs): 
+                training_imgs[i] = gaussian(training_imgs[i], sigma=self.sigma, preserve_range=True)
+                i+=1
+                
         
         # Gather the weights
         if self.threshold:
@@ -210,7 +222,7 @@ class BasicpyTrainer():
         #else:
         #    weights=None
         
-        # Init basicpy object with autosegmentation (needed for 3d)
+        # Init basicpy object with
         basic = BaSiC(get_darkfield=self.fit_darkfield,
                       autosegment=self.autosegment,
                       working_size=128)
@@ -298,7 +310,7 @@ if __name__ == "__main__":
     parser.add_argument('--nimg', help="Number of random images to train on. Sampled with replacement", default=None, required=True)
     parser.add_argument('--merge_n', help="Number of images to combine into one --nimg times", default=1)
     parser.add_argument('--pseudoreplicates', help="Number of pseudoreplicates to generate. Pseudoreplicate is a compound from --merge_n images samples from --nimg read images", default=0)
-    parser.add_argument('-p','--plate', help='Plate to process', nargs='+')
+    parser.add_argument('-p','--plate', help='Plate to process. Defaults to all detected plates.', nargs='+', default=None)
     parser.add_argument('-c','--channel', help="Channel number to correct", required=True)
     parser.add_argument('--fields', help='Fields to use. Defaults to use all fields.', nargs='+', default=None)
     #parser.add_argument('--planes', help='Z planes to use. Defaults to use all planes', nargs='+', default=None)
@@ -308,6 +320,8 @@ if __name__ == "__main__":
     parser.add_argument('--threshold', help="Use Otsu threshold to set fitting_weight from basicpy to 1 for foreground and 0 for background. This conceptually the inverse of the autosegmentation", action='store_true', default=False)
     parser.add_argument('--autosegment', help="Enable basicpy autosegment option", action='store_true', default=False)
     parser.add_argument('--plot', help="Plot basicpy results", action='store_true', default=False)
+    parser.add_argument('--blur', help="Apply a gaussian blur prior to fitting model.", action='store_true', default=False)
+    parser.add_argument('--sigma', help="The sd of the gaussian kernel.", default=5)
 
     args = parser.parse_args()
     
@@ -343,6 +357,9 @@ if __name__ == "__main__":
     print("plot:\t" + str(args.plot))
     print("blacklist:\t" + str(args.blacklist))
     print("pseudoreplicates:\t" + str(args.pseudoreplicates))
+    print("gaussian blur:\t" + str(args.blur))
+    print("sigma:\t" + str(args.sigma))
+
     print("-----------------------------------------------------------")
 
     trainer = BasicpyTrainer(path=input,
@@ -361,7 +378,9 @@ if __name__ == "__main__":
                             autosegment=args.autosegment,
                             plot=args.plot,
                             blacklist=args.blacklist,
-                            pseudoreplicates=int(args.pseudoreplicates))
+                            pseudoreplicates=int(args.pseudoreplicates),
+                            blur=args.blur,
+                            sigma=float(args.sigma))
                             
     trainer.train()
 

@@ -230,27 +230,29 @@ tglow.read.imgs <- function(data,
                             feature.y="cell_AreaShape_Center_Y",
                             feature.id="cell_Number_Object_Number_Global",
                             group.col="Metadata_group",
+                            img.id.col="Image_ImageNumber_Global",
                             channels=NULL,
                             planes=NULL,
                             max.project=T) {
   
   cur.cells <- data[[assay]]
   
-  if (class(cell.subset) == "numeric") {
+  if ((class(cell.subset) != "character") && (class(cell.subset) != "integer")) {
+        stop("Cell.subset must be character or integer")
+  }
+  
+  if (class(cell.subset) == "integer") {
+    warning("cell.subset is integer, make sure the indices are properly matched to assay.")
     if (max(cell.subset) > nrow(cur.cells)) {
       stop("Index in cell.subset larger then number of rows in assay. Are you using the correct assay?")
     }
-  }
-
-  if (class(cell.subset[1]) == "numeric") {
-    warning("cell.subset is numeric, make sure the indices are properly matched to assay.")
   }
     
   j <- 0
   out <- lapply(cell.subset, function(i) {
     cat("[INFO] Reading ", round((j / length(cell.subset))*100) ,"%\r")
     j <<- j+1
-    cur.group <- data$meta[cur.cells[i,"Image_ImageNumber_Global"],group.col]
+    cur.group <- data$meta[cur.cells[i, img.id.col],group.col]
     cur.img   <- img.index[cur.group,]
     x.pos     <- cur.cells[i,feature.x]
     y.pos     <- cur.cells[i,feature.y]
@@ -707,7 +709,7 @@ tglow.read.fileset.b <- function(prefix,
     }
   } 
   # Clean up the tmpdir
-  unlink(tmpdir, recursive=T)
+  unlink(paste0(tmpdir,"/features"), recursive=T)
 
   # Standardize ID's across filesets into the following format
   # FS#I#O#

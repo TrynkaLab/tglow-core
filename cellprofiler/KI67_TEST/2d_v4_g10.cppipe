@@ -462,8 +462,8 @@ MeasureGranularity:[module_num:31|svn_version:'Unknown'|variable_revision_number
     Select images to measure:ki67, nucl
     Measure within objects?:Yes
     Select objects to measure:nucl
-    Subsampling factor for granularity measurements:0.25
-    Subsampling factor for background reduction:0.25
+    Subsampling factor for granularity measurements:0.5
+    Subsampling factor for background reduction:0.5
     Radius of structuring element:10
     Range of the granular spectrum:16
 
@@ -471,8 +471,8 @@ MeasureGranularity:[module_num:32|svn_version:'Unknown'|variable_revision_number
     Select images to measure:mito
     Measure within objects?:Yes
     Select objects to measure:cell
-    Subsampling factor for granularity measurements:0.25
-    Subsampling factor for background reduction:0.25
+    Subsampling factor for granularity measurements:0.5
+    Subsampling factor for background reduction:0.5
     Radius of structuring element:10
     Range of the granular spectrum:16
 
