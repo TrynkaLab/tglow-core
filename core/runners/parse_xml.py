@@ -43,31 +43,50 @@ if __name__ == '__main__':
         pe_data.write_manifest(args.output_path)
         pe_data.save(args.output_path)
         
-        
         # Channel info
         info_file=open(f"{args.output_path}/acquisition_info.txt", 'w')
         
+        info_file.write("#-----------------------------------------------------------------------------------\n")
         info_file.write("# Channel list:\n")
         if pe_data.channels is not None:
             
             i = 0
-            info_file.write(f"index\tpe_id\tname\tnew_name\tresolution_zyx\n")
+            info_file.write(f"index\tpe_id\tname\tnew_name\tresolution_zyx\texcitation\temission\texposure\n")
             for channel in pe_data.channels:
             
                 res=channel['size']
                 res = (len(pe_data.planes), res[1], res[0])
             
-                info_file.write(f"{i}\t{channel['id']}\t{channel['name']}\tch{channel['id']} - {channel['name']}\t{res}\n")
+                info_file.write(f"{i}\t{channel['id']}\t{channel['name']}\tch{channel['id']} - {channel['name']}\t{res}\t{channel['main_excitation_wavelength']}\t{channel['main_emission_wavelength']}\t{channel['exposure_time']}\n")
                 i+=1
         else:
             channel_names = None
             info_file.write("None detected\n")
             
-        info_file.write("\n\n")
+        info_file.write("\n")
+        
+        # Objective info
+        info_file.write("#-----------------------------------------------------------------------------------\n")
+        info_file.write("# Objective info:\n")
+        if pe_data.channels is not None:
+            channel = pe_data.channels[0]
+            info_file.write(f"acquisition_type: {channel['acquisition_type']}\n")
+            info_file.write(f"binning_x: {channel['binning_x']}\n")
+            info_file.write(f"binning_y: {channel['binning_y']}\n")
+            info_file.write(f"objective_na: {channel['objective_na']}\n")
+            info_file.write(f"objective_magnification: {channel['objective_magnification']}\n")
+        else:
+            channel_names = None
+            info_file.write("None detected\n")
+        
+        
+        info_file.write("\n")
+
         # ZYX pixel sizes
         resolution = pe_data.estimate_pixel_sizes()
-
-        info_file.write("\n# Pixel sizes: \n")
+        
+        info_file.write("#-----------------------------------------------------------------------------------\n")
+        info_file.write("# Pixel sizes: \n")
         if resolution is not None:
             info_file.write(f"ZYX: {resolution}\n")
             info_file.write(f"Estimated anisotropy: {resolution[0] / resolution[1]}\n")

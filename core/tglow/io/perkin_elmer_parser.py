@@ -36,6 +36,10 @@ class PerkinElmerParser(object):
         self.parse_images()
         self.parse_wells()
         self.parse_channels()
+        
+        if self.channels is None:
+            self.parse_channels_from_images()
+        
         self.parse_planes()
         
     def estimate_pixel_sizes(self):
@@ -99,6 +103,49 @@ class PerkinElmerParser(object):
         else:
             return None         
     
+    def parse_channels_from_images(self):
+        channels = {}
+
+        for e in self.xml.findall("./PE:Images/PE:Image", self.NS):
+            
+            id = e.find("PE:ChannelID", self.NS).text
+            
+            if id not in [x for x in channels.keys()]:
+                channels[id] = {
+                            "id": e.find("PE:ChannelID", self.NS).text,
+                            "name": e.find("PE:ChannelName", self.NS).text,
+                            "image_type": e.find('./PE:ImageType',self.NS).text,
+                            "acquisition_type": e.find('./PE:AcquisitionType',self.NS).text,
+                            "illumination_type": e.find('./PE:IlluminationType',self.NS).text,
+                            "channel_type": e.find('./PE:ChannelType',self.NS).text,
+                            "max_intensity": e.find('./PE:MaxIntensity',self.NS).text,
+                            "camera_type": e.find('./PE:CameraType',self.NS).text,
+                            "main_excitation_wavelength": e.find('./PE:MainExcitationWavelength',self.NS).text,
+                            "main_emission_wavelength": e.find('./PE:MainEmissionWavelength',self.NS).text,
+                            "objective_magnification": e.find('./PE:ObjectiveMagnification',self.NS).text,
+                            "objective_na": e.find('./PE:ObjectiveNA',self.NS).text,
+                            "exposure_time": e.find('./PE:ExposureTime',self.NS).text,
+                            "binning_x": e.find('./PE:BinningX',self.NS).text,
+                            "binning_y": e.find('./PE:BinningY',self.NS).text,
+                            "size": (
+                                int(e.find('./PE:ImageSizeX',self.NS).text),
+                                int(e.find('./PE:ImageSizeY',self.NS).text)
+                            ),
+                        }
+                x = e.find('./PE:ImageResolutionX',self.NS)
+                y = e.find('./PE:ImageResolutionY',self.NS)
+                channels[id]["image_resolution"] = {
+                    "x": {"unit":x.attrib["Unit"], "value":float(x.text),},
+                    "y": {"unit":y.attrib["Unit"], "value":float(y.text),},
+                }
+
+        self.channels = [x for x in channels.values()]  
+        log.info(f" └ Channel count = {len(self.channels)}")
+                 
+        if len(self.channels) == 0:
+            log.warning("No channel info found in images. Double check the PE index file.")
+            self.channels = None
+    
     def parse_channels(self):
         """Get PE channels"""
         log.info(f"[+] Reading Channels metadata")
@@ -113,6 +160,15 @@ class PerkinElmerParser(object):
                     "acquisition_type": e.find('./PE:AcquisitionType',self.NS).text,
                     "illumination_type": e.find('./PE:IlluminationType',self.NS).text,
                     "channel_type": e.find('./PE:ChannelType',self.NS).text,
+                    "max_intensity": e.find('./PE:MaxIntensity',self.NS).text,
+                    "camera_type": e.find('./PE:CameraType',self.NS).text,
+                    "main_excitation_wavelength": e.find('./PE:MainExcitationWavelength',self.NS).text,
+                    "main_emission_wavelength": e.find('./PE:MainEmissionWavelength',self.NS).text,
+                    "objective_magnification": e.find('./PE:ObjectiveMagnification',self.NS).text,
+                    "objective_na": e.find('./PE:ObjectiveNA',self.NS).text,
+                    "exposure_time": e.find('./PE:ExposureTime',self.NS).text,
+                    "binning_x": e.find('./PE:BinningX',self.NS).text,
+                    "binning_y": e.find('./PE:BinningY',self.NS).text,
                     "size": (
                         int(e.find('./PE:ImageSizeX',self.NS).text),
                         int(e.find('./PE:ImageSizeY',self.NS).text)
@@ -134,7 +190,7 @@ class PerkinElmerParser(object):
         log.info(f" └ Channel count = {len(self.channels)}")
 
         if len(self.channels) == 0:
-            log.warning("No channel map found! This is the case for Operetta idx (TODO)")
+            log.warning("No channel map found! This is the case for Operetta idx, trying to get channel map from images.")
             self.channels=None
 
     def parse_planes(self):
