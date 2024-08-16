@@ -36,18 +36,22 @@ tglow.filter.features.calc <- function(dataset, filter.table, assay="cells", fea
     
     cat("[INFO] Applying pattern: ",  filter.table[i, "column_pattern"],  " and selected: ", length(cur.features), " features \n")
     
+    j <- 0
     res[cur.features, cur.filter.name] <- apply(data[,cur.features], 2, function(x){
+      j <<- j+1
+      cat("[INFO] ", round((j/length(cur.features))*100, digits=2), "%\r")
       do.call(cur.filter, list(vec=x, thresh=filter.table[i, "value"]))
     })
+    cat("\n")
   }
   
   return(res)
 }
 
 #-------------------------------------------------------------------------------
-#' Find which feature filters to a tglow dataset
+#' Find which feature filters to a tglow dataset.
 #' 
-#' All filters are inclusive
+#' All filters are inclusive. NA is treated as FALSE.
 #' 
 #' @param dataset tglow dataset
 #' @param res output from tglow.filter.calc
@@ -57,7 +61,7 @@ tglow.filter.features.calc <- function(dataset, filter.table, assay="cells", fea
 tglow.filter.features.apply <- function(dataset, res) {
   
   if (class(res)[1] == "data.frame" | class(res)[1] == "matrix") {
-    selector <- rowSums(res)!=ncol(res)
+    selector <- rowSums(res, na.rm=T)!=ncol(res)
     names(selector) <- rownames(res)
   } else if (class(res)[1] == "logical") {
     selector <- res
@@ -149,7 +153,7 @@ tglow.filter.cells.calc <- function(dataset, filter.table, assay="cells", featur
 #' @param res A data frame, matrix or vector with booleans describing which cells to keep.
 #' @returns 
 #' A tglow dataset with the cells, image and object relation matrix filtered
-tglow.filter.cells.apply <- function(dataset, res, img.id.col="Image_ImageNumber_Global") {
+tglow.filter.cells.apply <- function(dataset, res, img.id.col="Image_ImageNumber_Global", other.assays = NULL) {
   
   if (class(res)[1] == "data.frame" | class(res)[1] == "matrix") {
     selector <- rowSums(res)==ncol(res)
@@ -162,8 +166,14 @@ tglow.filter.cells.apply <- function(dataset, res, img.id.col="Image_ImageNumber
   
   dataset$cells <-  dataset$cells[selector,]
   
-  if ("cells_norm" %in% names(dataset)) {
-    dataset$cells_norm <-  dataset$cells_norm[selector,]
+   if (!is.null(other.assays)){
+    
+    for (a in other.assays){
+      
+      dataset[[a]] <-  dataset[[a]][selector,]
+      
+    } 
+    
   }
   
   img.nr <- unique(dataset$cells[,img.id.col])
@@ -219,10 +229,6 @@ tglow.filter.img.apply <- function(dataset, res, col.img.id="Image_ImageNumber_G
 }
 
 
-
-
-
-
 #-------------------------------------------------------------------------------
 # Filters
 #-------------------------------------------------------------------------------
@@ -256,12 +262,28 @@ filter.na.multicol <- function(vec, thresh, grouping) {
 }
 
 #-------------------------------------------------------------------------------
-#' Zero variance filter
+#' Caret near zero variance filter
 filter.near.zero.var <- function(vec, thresh=NULL) {
   return (length(nearZeroVar(vec))==0)
 }
 
 filter.near.zero.var.sum <- function(...) {filter.sum(..., func=filter.near.zero.var)}
+
+#-------------------------------------------------------------------------------
+#' Zero variance filter
+filter.zero.var <- function(vec, thresh=0) {
+  return (Rfast::Var(vec[!is.na(vec)]) > thresh)
+}
+
+filter.zero.var.sum <- function(...) {filter.sum(..., func=filter.zero.var)}
+
+#-------------------------------------------------------------------------------
+#' Minimum number of unique values
+filter.unique.val <- function(vec, thresh=NULL) {
+  return (length(unique(vec)) > thresh)
+}
+
+filter.unique.val.sum <- function(...) {filter.sum(..., func=filter.unique.val)}
 
 #-------------------------------------------------------------------------------
 #' Infinite median filter

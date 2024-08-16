@@ -23,9 +23,9 @@ nearest.index <- function(x, value) {
 #' specify q.
 #' 
 #' @returns vector of indices in cell matrix
-tglow.fetch.representative.cell <- function(data, feature, metric="mean", na.rm=F, n=0, subset=NULL, q=NULL) {
+tglow.fetch.representative.cell <- function(dataset, feature, assay="cells", metric="mean", na.rm=F, n=0, subset=NULL, q=NULL) {
   
-  x <- data$cells[, feature]
+  x <- dataset[[assay]][, feature]
   i <- 1:length(x)
   
   if (!is.null(subset)) {
@@ -59,11 +59,71 @@ tglow.fetch.representative.cell <- function(data, feature, metric="mean", na.rm=
   return(i[out])
 }
 
+
+#-------------------------------------------------------------------------------
+#' Retrieve a set of cells (and its neighbours) based on a feature sumstat
+#' 
+#' Fetches (n*2)+1 cells arround the 0th, 25th, 50th, 75th and 100th quantiles
+#'
+#' @returns A list with row ids and labels for the cells
+tglow.fetch.representative.cell.quantiles <- function(dataset, feature, assay="cells", name=NULL, n=1, col.obj.id="cell_ObjectNumber_Global") {
+  
+  cur.assay <- dataset[[assay]]
+  if (is.null(name)) {
+    name <- feature
+  } 
+  
+  if (!col.obj.id %in% colnames(cur.assay)) {
+    stop(paste0("Id collumn ", col.obj.id, " not found in assay ", assay))
+  }
+  
+  cells    <- c()
+  cell.ids <- c()
+  
+  f   <- cur.assay[,feature]
+  idx <- cur.assay[!is.na(f), col.obj.id]
+  f   <- f[!is.na(f)]
+  fs  <- order(f)
+  
+  lower <- which(cur.assay[, col.obj.id] %in% idx[head(fs, n=(n*2)+1)])
+  upper <- which(cur.assay[, col.obj.id] %in% idx[tail(fs, n=(n*2)+1)])
+  
+  l25 <- tglow.fetch.representative.cell(dataset,
+    feature=feature,
+    assay=assay,
+    metric="lower.q",
+    q=0.25,
+    n=n)
+  
+  l50 <- tglow.fetch.representative.cell(dataset,
+    feature=feature,
+    assay=assay,
+    metric="lower.q",
+    q=0.5,
+    n=n)
+  
+  l75 <- tglow.fetch.representative.cell(dataset,
+    feature=feature,
+    assay=assay,
+    metric="lower.q",
+    q=0.75,
+    n=n)
+                                         
+  cn <- c(rep(paste0("q0 - ", name), (n*2)+1),
+        rep(paste0("q25 - ", name), (n*2)+1),
+        rep(paste0("q50 - ", name), (n*2)+1),
+        rep(paste0("q75 - ", name), (n*2)+1),
+        rep(paste0("q100 - ", name), (n*2)+1))
+                                
+  return(list(ids=c(lower, l25, l50, l75, upper), names=cn))         
+  
+}
+
 #-------------------------------------------------------------------------------
 #' Test feature association with meta data element
 #' 
 #' 
-tglow.run.assoc <- function(dataset, predictor, assay="cells_norm", method="lm", features=NULL) {
+tglow.run.assoc <- function(dataset, predictor, assay="cells_norm", method="lm", features="analyze_norm", img.id.col="Image_ImageNumber_Global") {
   
   if(!assay %in% names(dataset)) {
     stop(paste0(assay, " not found in data. Call tglow.norm first"))
@@ -71,22 +131,25 @@ tglow.run.assoc <- function(dataset, predictor, assay="cells_norm", method="lm",
     #return(NULL)
   }
   
-  if (is.null(features)) {
-    features <- colnames(dataset$cells)[dataset$features$analyze]
-    features <- features[features %in% colnames(dataset[[assay]])]
+  # Filter to features  
+  if (length(features) == 1) {
+    if (features %in% c("analyze_norm", "analyze")) {
+      features <- dataset$features$id[dataset$features[[features]]]
+      features <- features[features %in% colnames(dataset[[assay]])]
+    } else {
+        stop("Not a valid features column")
+    }
   } else{
-
     features <- features[features %in% colnames(dataset[[assay]])]
-
   }
 
   cur.cells <- dataset[[assay]][,features]
   
   if (method == "lm") {
 
-    if (predictor %in% colnames(dataset$meta) & assay %in% c("cells", "cells_corrected", "cells_corrected_norm", "cells_norm", "cells_transform", "cells_log", "cells_sqr")) {
+    if (predictor %in% colnames(dataset$meta) & assay %in% c("cells", "cells_corrected", "cells_corrected_norm", "cells_norm", "cells_transform", "cells_log", "cells_sqr", "cells_res")) {
 
-      x <- dataset$meta[dataset[[assay]]$Image_ImageNumber_Global, predictor]
+      x <- dataset$meta[dataset[[assay]][,img.id.col], predictor]
 
     } else if (predictor %in% colnames(dataset$meta) & assay %in% c("agg", "agg_cor", "agg_cor_mean", "agg_cor_median")){ # Julie added this so we can do it on the aggregated data as well
 
@@ -281,7 +344,16 @@ tglow.merge.filesets <- function(data) {
   selector <- (ncol.cells == as.numeric(names(which.max(table(ncol.cells))))) & (ncol.meta == as.numeric(names(which.max(table(ncol.meta))))) & (ncol.orl  == as.numeric(names(which.max(table(ncol.orl)))))
   
   if (sum(selector) != length(selector)) {
-    warning(paste0("Not all filesets have the same collumn number, dropping the ones with least frequent number. Retained ", sum(selector), "/", length(selector), " filesets."))
+  
+    msg <- paste0("Not all filesets have the same collumn number, dropping the ones with least frequent number. Retained ", 
+    sum(selector), "/", length(selector), " filesets. \n",
+    "The following filesets are at issue:\n")
+    
+    for (i in (1:length(data))[!selector]) {
+      msg <- paste0(msg, i, ", ")
+    }
+    
+    warning(msg)
   }
   
   out$cells <- dplyr::bind_rows(lapply(data[selector], function(x){x[["cells"]]}),)
@@ -397,17 +469,17 @@ tglow.grouped.scale <- function(data, grouping, features=NULL, method="mod.z"){
 #' @param method method to use for normalizing, z | mod zcore
 #' 
 #' @returns tglow dataset with normalized assay
-tglow.normalize <- function(dataset, method="mod.z", features="analyze", assay.out="cells_norm", assay = "cells", filter=TRUE) {
+tglow.normalize <- function(dataset, method="mod.z", features="analyze", assay.out="cells_norm", assay = "cells", filter=TRUE, new.feat.col = "analyze_norm") {
   
   
   # Normalize and filter features
   ft <- dataset[[assay]]
-
+  
   # Extract ids
   ids <- ft$Image_ImageNumber_Global
-
+  
   # Filter to features  
-  if (features %in% c("analyze_norm", "analyze")) {
+  if (all(features %in% c("analyze_norm", "analyze"))) {
     features <- dataset$features$id[dataset$features[[features]]]
     features <- features[features %in% colnames(dataset[[assay]])]
   } 
@@ -417,7 +489,7 @@ tglow.normalize <- function(dataset, method="mod.z", features="analyze", assay.o
   
   i <- 0
   j <- ncol(ft)
-
+  
   if (method == "mod.z") {
     ft[, features] <- apply(ft[, features], 2, function(x){
       i <<- i +1
@@ -436,9 +508,9 @@ tglow.normalize <- function(dataset, method="mod.z", features="analyze", assay.o
   cat("\n")
   
   if(filter==TRUE){
-
+    
     # OLD SCRIPT THAT REMOVES FEATURES FROM DATAFRAME
-     # Remove non properly normalized features and those with zero variance
+    # Remove non properly normalized features and those with zero variance
     #cat("[INFO] Checking for NA's\n")
     #ft <- ft[,colSums(is.na(ft)) == 0]
     #cat("[INFO] Checking for zero variances\n")
@@ -448,27 +520,26 @@ tglow.normalize <- function(dataset, method="mod.z", features="analyze", assay.o
     #if (ncol(ft) != length(features)) {
     #  warning(paste0("Removed ", length(features)-ncol(ft), " features with zero variance after normalizing"))
     #}
-
+    
     # NEW SCRIPT THAT KEEPS FEATURES IN DATAFRAME - BUT CHANGES output$features
-    dataset$features$analyze_norm <- dataset$features$analyze
+    dataset$features[[new.feat.col]] <- dataset$features$analyze
     cat("[INFO] Checking for NA's\n")
-    dataset$features$analyze_norm[colSums(is.na(ft[, features])) > 0] <- F # Set features with NAs as F
-
+    dataset$features[[new.feat.col]][colSums(is.na(ft[, features])) > 0] <- F # Set features with NAs as F
+    
     cat("[INFO] Checking for zero variances\n")
-    dataset$features$analyze_norm[Rfast::colVars(ft[, features]) == 0] <- F # Set features with zero variance as F
-    dataset$features$analyze_norm[colVars(as.matrix(ft[, features])) == 0] <- F # Set features with zero variance as 
-
+    dataset$features[[new.feat.col]][Rfast::colVars(ft[, features]) == 0] <- F # Set features with zero variance as F
+    dataset$features[[new.feat.col]][colVars(as.matrix(ft[, features])) == 0] <- F # Set features with zero variance as 
+    
   }
   
   # Transform to dataframe add back Image_ImageNumber_Global
   ft <- as.data.frame(ft)
   #ft$Image_ImageNumber_Global <- ids
-
+  
   dataset[[assay.out]] <- ft
   
   return(dataset)
 }
-
 
 
 #-------------------------------------------------------------------------------
@@ -615,7 +686,6 @@ tglow.pca.outliers.deprecated <- function(dataset, assay = "cells_transform", gr
 #' Detect outlier cells in PCA space
 #' [more annotated, updated normalization per group] 
 #'
-
 tglow.pca.outliers <- function(dataset, 
                                assay = "cells_transform", 
                                grouping=NULL, 
@@ -625,171 +695,120 @@ tglow.pca.outliers <- function(dataset,
                                threshold=3.5, 
                                features=NULL, 
                                features.col = "analyze", 
-                               method="z", 
-                               renormalize=T) {
+                               method="z") {
   
-  #stop("Not finished")
-  
-  # Check that the assay is there
-  if (!assay %in% names(dataset)) {
-    
-    stop(paste0("Assay not found: ", assay))
-    
-  } else {
-    
-    cat("[INFO] Found assay: ", assay, "\n")
-    
+  if (is.null(grouping)) {
+    stop("Must provide grouping")
   }
   
-  # Selecting Features
-  if (is.null(features)) {
+  if ( "list" %in% class(dataset)) {
+    # Check that the assay is there
+    if (!assay %in% names(dataset)) {
+      stop(paste0("Assay not found: ", assay))
+    } else {
+      cat("[INFO] Found assay: ", assay, "\n") 
+    }
     
-    cat("[INFO] Selecting Feature Column: ' ", features.col, " ' from the assay: '", assay, "' \n")
+    # Selecting Features
+    if (is.null(features)) {
+      cat("[INFO] Selecting Feature Column: ' ", features.col, " ' from the assay: '", assay, "' \n")
+      features <- output$features$id[output$features[[features.col]]]
+      features <- features[features %in% colnames(dataset[[assay]])]
+    } 
+     
+    # Set data to the assay
+    data <- as.matrix(dataset[[assay]][,features])
     
-    features <- output$features$id[output$features[[features.col]]]
-    features <- features[features %in% colnames(dataset[[assay]])]
-    
-  } 
+  } else if ("matrix" %in% class(dataset)) {
+    data <- dataset
+  } else {
+    stop("Dataset is not a valid class, must be a matrix or a list (tglow)")
+  }
   
   # Now we want to create 'data' according to the different options of normalization
+  # If there is no grouping, make sure dataset is normalized across the experiment    
+  cat("[INFO] Starting Analysis Per Group", "\n")
+
   
-  # If there is no grouping, make sure dataset is normalized across the experiment
-  if (is.null(grouping)) {
+  # Define results matrix
+  output     <- matrix(NA, nrow=nrow(data), ncol=ncol(data))
+  output.pcs <- matrix(NA, nrow=nrow(data), ncol=ncol(data))
+  outliers   <- rep(NA, nrow(data))
+  
+  # Now for each group
+  for (group in unique(grouping)) {
     
-    stop("Not implemented")
-    data <- dataset[[assay]]
+    cat("[INFO] Calculating for ", group, "\n")
     
-    if (renormalize) {
-      
-      dataset <- tglow.normalize(dataset, features=features, method="z", assay = assay, assay.out = "cells_norm_qc")
-      data <- dataset[["cells_norm_qc"]]
-      
+    # Subset data
+    cur.data <- data[grouping==group,]
+    
+    # Check if there enough cells
+    if (sum(grouping==group) < 2) {
+      warning("Need at least two cells in group, skipping")
+      next  
     }
     
-    # Calculate PCAs here...
+    cat("[INFO] Rescaling data for group\n")
+    cur.data <- fcolScale(cur.data, add_attr=F)
     
+    # Remove features of low variance
+    cat("[INFO] Removing Features of Low Variance for ", group, "\n")
+    cur.data <- cur.data[,Rfast::colsums(is.na(cur.data)) == 0]
+    cur.data <- cur.data[,Rfast::colVars(cur.data)!=0]
     
-    # If there is grouping -> normalize data per group later in the script
-  } else { 
+    if (ncol(cur.data) != ncol(data)) {
+      warning(paste0("Removed ", ncol(data)-ncol(cur.data), " features with zero variance after normalizing"))
+    }
     
-    cat("[INFO] Starting Analysis Per Group", "\n")
+    # Again define PCs to less then the smallest dimension
+    if (nrow(cur.data) < pc.max) {   
+      pc.final <- nrow(cur.data) -1
+    } else {
+      pc.final <- pc.max
+    }
     
-    # Set data to the assay
-    data <- dataset[[assay]]
+    # Define the number of PCs
+    if (pc.final > ncol(cur.data)) {
+      pc.final <- ncol(cur.data) -1 
+    }
     
-    # Define results matrix
-    output     <- matrix(NA, nrow=nrow(data), ncol=length(features))
-    output.pcs <- matrix(NA, nrow=nrow(data), ncol=length(features))
-    outliers   <- rep(NA, nrow(data))
+    cat("[INFO] Calculating  ", pc.final, " pc's on ", nrow(cur.data), " samples and, ", ncol(cur.data), " features\n")
+
+    # Calculate PCAs
+    pca      <- irlba::prcomp_irlba(cur.data, n=pc.final)
     
-    # Now for each group
-    for (group in unique(grouping)) {
+    # Selecting n.pcs or number of PCs that explain x of the variance
+    if (is.null(pc.n)) {
+      pc.var <- pca$sdev^2/pca$totalvar
       
-      cat("[INFO] Calculating for ", group, "\n")
-      
-      # Subset data
-      cur.data <- data[grouping==group, features]
-      
-      # Check if there enough cells
-      if (sum(grouping==group) < 2) {
-        
-        warning("Need at least two cells in group, skipping")
-        next
-        
-      }
-      
-      # Normalize Data
-      if (method == "mod.z") {
-        
-        cur.data <- apply(cur.data, 2, tglow.mod.zscore)
-        
-      } else if (method == "z") {
-        
-        cur.data <- apply(cur.data, 2, scale, center=T, scale=T)
-        
-      }
-      
-      # Remove features of low variance
-      cat("[INFO] Removing Features of Low Variance for ", group, "\n")
-      
-      cur.data <- cur.data[,colSums(is.na(cur.data)) == 0]
-      cur.data <- cur.data[,colVars(as.matrix(cur.data))!=0]
-      
-      if (ncol(cur.data) != length(features)) {
-        
-        warning(paste0("Removed ", length(features)-ncol(cur.data), " features with zero variance after normalizing"))
-        
-      }
-      
-      # Again define PCs to less then the smallest dimension
-      if (nrow(cur.data) < pc.max) {
-        
-        pc.final <- nrow(cur.data) -1
-        
+      if (sum(cumsum(pc.var) > pc.thresh) >=1){
+        pc.n   <- min(which(cumsum(pc.var) > pc.thresh))
       } else {
-        
-        pc.final <- pc.max
-        
+        pc.n <- pc.final
+
       }
       
-      
-      # Define the number of PCs
-      if (pc.final > ncol(cur.data)) {
-        
-        pc.final <- ncol(cur.data) -1
-        
+      if (cumsum(pc.var)[pc.n] < pc.thresh) {     
+        warning("Last pc doesnt pass pc.thresh, try increasing pc.max")    
       }
       
-      # Calculate PCAs
-      pca      <- irlba::prcomp_irlba(cur.data, n=pc.final, center=F, scale=F)
-      
-      # Selecting n.pcs or number of PCs that explain x of the variance
-      if (is.null(pc.n)) {
-        
-        pc.var <- pca$sdev^2/pca$totalvar
-        
-        if (sum(cumsum(pc.var) > pc.thresh) >=1){
-          
-          pc.n   <- min(which(cumsum(pc.var) > pc.thresh))
-          
-        } else {
-          
-          pc.n <- pc.final
-          
-        }
-        
-        if (cumsum(pc.var)[pc.n] < pc.thresh) {
-          
-          warning("Last pc doesnt pass pc.thresh, try increasing pc.max")
-          
-        }
-        
-        cat("[INFO] Selected ", pc.n, " pcs explaining ", round(cumsum(pc.var)[pc.n], digits=2)*100, "% of the variance\n")
-        
-      }
-      
-      # Now we perform z-scoring on the PCs
-      if (method == "mod.z") {
-        
-        pcs.norm <- apply(pca$x, 2, tglow.mod.zscore)[,1:pc.n, drop=F]
-        
-      } else if (method == "z") {
-        
-        pcs.norm <- apply(pca$x, 2, scale, center=T, scale=T)[,1:pc.n, drop=F]
-        
-      }
-      
-      # Add results to the outlier list
-      outliers[grouping==group] <- rowSums(abs(pcs.norm) < threshold) != pc.n
-      pc.n <- NULL
-      
-      
+      cat("[INFO] Selected ", pc.n, " pcs explaining ", round(cumsum(pc.var)[pc.n], digits=2)*100, "% of the variance\n")
     }
     
+    # Now we perform z-scoring on the PCs
+    if (method == "mod.z") {
+      pcs.norm <- apply(pca$x, 2, tglow.mod.zscore)[,1:pc.n, drop=F]
+    } else if (method == "z") {   
+      pcs.norm <- apply(pca$x, 2, scale, center=T, scale=T)[,1:pc.n, drop=F] 
+    }
+    
+    # Add results to the outlier list
+    outliers[grouping==group] <- rowSums(abs(pcs.norm) < threshold) != pc.n
+    pc.n <- NULL
   }
   
   return(list(outliers=outliers)) #, pcs=output.pcs))
-  
 }
 
 
@@ -809,7 +828,6 @@ tglow.median_by_group <- function(dataset, assay = "cells_norm", features = NULL
     features <- features[features %in% colnames(dataset[[assay]])]
 
   }
-  
   
   # Define group values
   group_values <- dataset$meta[dataset[[assay]]$Image_ImageNumber_Global, ][[group]]
@@ -835,7 +853,7 @@ tglow.median_by_group <- function(dataset, assay = "cells_norm", features = NULL
   results <- do.call(rbind, results)
   results <- as.data.frame(results)
   results$Image_ImageNumber_Global <- rownames(results)
-  
+
   return(results)  
 }
 
@@ -849,7 +867,8 @@ fcolScale <- function(x,
                     scale = TRUE,
                     add_attr = TRUE,
                     rows = NULL,
-                    cols = NULL) {
+                    cols = NULL,
+                    na.rm=F) {
   if (!is.null(rows) && !is.null(cols)) {
     x <- x[rows, cols, drop = FALSE]
   } else if (!is.null(rows)) {
@@ -860,12 +879,12 @@ fcolScale <- function(x,
   ################
   # Get the column means
   ################
-  cm = colMeans(x, na.rm = TRUE)
+  cm = colMeans(x, na.rm=na.rm)
   ################
   # Get the column sd
   ################
   if (scale) {
-    csd = colSds(x, center = cm)
+    csd = matrixStats::colSds(x, center = cm, na.rm=na.rm)
   } else {
     # just divide by 1 if not
     csd = rep(1, length = length(cm))
@@ -904,7 +923,15 @@ tglow.correct <- function(dataset, assay = "cells", to.correct = "plate_id", ass
   cur.cells <- na.omit(dataset[[assay]][, features])
   
   # Make a basic dataframe with our variable to correct (z) for the function [so we do z ~ f]
-  df <- data.frame(z = temp$meta[dataset[[assay]]$Image_ImageNumber_Global, to.correct])
+  if(to.correct %in% colnames(dataset$meta)){ # if we want to correct a metadata variable
+    
+    df <- data.frame(z = dataset$meta[dataset[[assay]]$Image_ImageNumber_Global, to.correct])
+    
+  } else{ # if we want to correct a feature (i.e: intensity)
+    
+    df <- data.frame(z = dataset[[assay]][[to.correct]]) 
+    
+  }
   
   i <- 0 # tracking of progress
   j <- ncol(cur.cells) # tracking of progress
@@ -993,9 +1020,9 @@ tglow.correct.group <- function(dataset, assay = "cells", assay.out = "cells_cor
       
       # Run the linear models
       l1 <- lm(y ~ z, data = data)
-      
+      s <- summary(l1)
       feature <- colnames(cur.cells)[y]
-      residuals.group[[feature]] <- residuals(l1)
+      residuals.group[[feature]] <- residuals(l1) + s$coefficients[1,1] 
       
     }
     
@@ -1015,23 +1042,37 @@ tglow.correct.group <- function(dataset, assay = "cells", assay.out = "cells_cor
 #-------------------------------------------------------------------------------
 #' Function to transform data using boxcox
 #' c is the column you want to transform
-
-tglow.transform.bc <- function(c, tracking = T, return.lambda = F, limit = 5){
+#' tracking = T, > This should be done in a wrapper on the loop, not here <
+tglow.transform.bc <- function(c, return.lambda = F, limit = 5, downsample.lambda=NULL){
   
-  if(tracking == T){
-    # Increment the global counter
-    i <<- i + 1
-     
-    # Print the progress
-    cat("\r[INFO]", round((i/j)*100, digits=2), "%")
-
-  }
+  #  > This should be done in a wrapper on the loop, not here <
+  #if(tracking == T){
+  #  # Increment the global counter
+  #  i <<- i + 1
+  #  # Print the progress
+  #  cat("\r[INFO]", round((i/j)*100, digits=2), "%")
+  #}
 
   # If is not positive - then offset to make everything positive
-  if(any(c <= 0) == T) { c <- abs(min(c, na.rm=T)) + c + 1 }
+  if(any(c <= 0, na.rm = T) == T) { c <- abs(min(c, na.rm=T)) + c + 1 }
   
   # Create data to estimate transformation parameters
-  y <- c[cells] # subset 50K cells
+  # Optionally downsample
+  if (!is.null(downsample.lambda)) {
+    if (class(downsample.lambda) == "integer" || class(downsample.lambda) == "numeric") {   
+      if (length(downsample.lambda) > 1) {
+        y <- c[downsample.lambda]
+      } else {
+        y <- c[sample(1:length(c), downsample.lambda)]
+      }
+    } else {
+      stop("downsample.lambda must be a single integer, or a vector representing values to use for lambda estimation")
+    }
+  } else {
+    y <- c
+  }
+  
+  #y <- c[cells] # subset 50K cells
   #x <- rep(1, length(y)) # make everything a 1
   
   # Estimate transformation parameters

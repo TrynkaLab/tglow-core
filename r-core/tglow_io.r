@@ -30,11 +30,10 @@ tglow.read.dir <- function(path, pattern, type, n=NULL, verbose=F, ...) {
   if (type == "A") {
     prefixes <- gsub(pattern, "", files)
   } else {
-      prefixes <- files
+    prefixes <- files
   }
   
   if (!is.null(n)) {
-  
     #if (length(n) == 1) {
         prefixes <- prefixes[n]
     #} else {
@@ -60,11 +59,17 @@ tglow.read.dir <- function(path, pattern, type, n=NULL, verbose=F, ...) {
     } else {
       stop(paste0("Invalid type: ", type))
     }
-    filesets[[pre]] <- cur
     
-    if (verbose){
-        cat("\n[DEBUG] cols:", ncol(cur$cells), " cols meta", ncol(cur$meta), " cols orl:", ncol(cur$orl), "\n")
+    if (!is.null(cur)) {
+      filesets[[pre]] <- cur
+    
+      if (verbose){
+          cat("\n[DEBUG] cols:", ncol(cur$cells), " cols meta", ncol(cur$meta), " cols orl:", ncol(cur$orl), "\n")
+      }
+    } else {
+      warning("Fileset was NULL, skipped.")
     }
+
   }
   
   cat("\n[INFO] Merging filesets\n")
@@ -610,7 +615,8 @@ tglow.read.fileset.b <- function(prefix,
                                  pat.img=".*Image.txt",
                                  pat.cells=".*cell.txt",
                                  pat.orl=".*Object relationships.txt",
-                                 pat.others="^.*_([a-z]+).txt$") {
+                                 pat.others="^.*_([a-z]+\\d*).txt$",
+                                 na.rm=F) {
   
   if (add.global.id) {
     assign("FILESET_ID", FILESET_ID + 1, envir = .GlobalEnv)
@@ -627,27 +633,11 @@ tglow.read.fileset.b <- function(prefix,
   cells <- fread(paste0(tmpdir, "/", index[grep(pat.cells, index$FileName),"Name"]), data.table=F)
   img   <- fread(paste0(tmpdir, "/", index[grep(pat.img, index$FileName),"Name"]), data.table=F)
   orl   <- fread(paste0(tmpdir, "/", index[grep(pat.orl, index$FileName),"Name"]), data.table=F)
-
-  # Read content of _cells.tsv
-  #cells <- read.table(unz(prefix,
-  #                        index[grep(pat.cells, index$FileName), "Name"]),
-  #                    stringsAsFactors = F,
-  #                    header=T,
-  #                    sep="\t")
   
-  # Read _image.tsv (metadata)
-  #img <- read.table(unz(prefix,
-  #                        index[grep(pat.img, index$FileName), "Name"]),
-  #                  stringsAsFactors = F,
-  #                  header=T,
-  #                  sep="\t")
-
-  # Read _objectRelation.ships.tsv
-  #orl <- read.table(unz(prefix,
-  #                      index[grep(pat.orl, index$FileName), "Name"]),
-  #                  stringsAsFactors = F,
-  #                  header=T,
-  #                  sep="\t")  
+  if (nrow(cells) == 0) {
+    warning("No cells detected for ", index[grep(pat.cells, index$FileName),"Name"], " returning NULL.")
+    return(NULL)
+  }
   
   
   exclude <- c(grep(pat.cells, index$FileName),
@@ -665,40 +655,42 @@ tglow.read.fileset.b <- function(prefix,
     index$object <- gsub(pat.others, "\\1",index$FileName)
     
     for (i in 1:nrow(index)) {
-      #cur <- read.table(unz(prefix,
-      #                      index[i, "Name"]),
-      #                  stringsAsFactors = F,
-      #                  header=T,
-      #                  sep="\t")  
-      cur <- fread(paste0(tmpdir, "/", index[i, "Name"]), data.table=T)
+      obj               <- index[i, "object"]
+      cur               <- fread(paste0(tmpdir, "/", index[i, "Name"]), data.table=T)
       
+      # Remove these columns from the merging strategy
+      exclude.cols      <- c("Group.1", grep("ObjectNumber", colnames(cur), value=T), grep("Number_Object_Number", colnames(cur), value=T))
+  
+      # If there are no cols, return NA
       if (nrow(cur) == 0) {
-        next()
-      }
-      
-      #if (add.global.id) {
-      #  cur <- add.global.ids(cur)
-      #}
-      
-      if (merging.strategy == "mean") {
+        #next()
+        # If the file is empty, set these columns to NA
+        cur                                   <- as.data.frame(cur)
+        colnames(cur)                         <- paste0(obj, "_", colnames(cur))
+        cells[,c(colnames(cur), paste0(obj, "_QC_Object_Count"))] <- NA
+        warning(paste0(obj, " assay for ", index[i, "Name"], " is empty. Returning NA for these cols."))
+      } else  if (merging.strategy == "mean") {
         
-        obj              <- index[i, "object"]
         cur              <- cur[as.logical(cur[[parent.col]] != 0),]
         colnames(cur)    <- paste0(obj, "_", colnames(cur))
         selector         <- paste0(cur[[paste0(obj, "_ImageNumber")]], "_", cur[[paste0(obj, "_", parent.col)]])
-        
-        counts            <- table(selector)
+        counts           <- table(selector)
         #exclude.cols      <- c("Group.1", grep("ObjectNumber", colnames(cur), value=T), grep("Number_Object_Number", colnames(cur), value=T))
-        exclude.cols      <- c("Group.1", grep("ObjectNumber", colnames(cur), value=T), grep("Number_Object_Number", colnames(cur), value=T))
 
-        cur$Group.1 <- selector
-        tmp <- as.data.frame(cur[, lapply(.SD, mean, na.rm=TRUE), by=Group.1, .SDcols=colnames(cur)[!colnames(cur) %in% exclude.cols] ])
+        cur$Group.1      <- selector
+
+        tmp              <- as.data.frame(cur[, lapply(.SD, mean, na.rm=na.rm), by=Group.1, .SDcols=colnames(cur)[!colnames(cur) %in% exclude.cols] ])
+        rownames(tmp)    <- tmp$Group.1
+
+        # The above is the data.table equivalent of aggregate, which is MUCH faster
         #tmp               <- aggregate(cur, by=list(selector), FUN=mean, na.rm=T)
 
-        rownames(tmp)     <- tmp$Group.1
+        # Add the object count as a sanity check
         tmp[,paste0(obj, "_QC_Object_Count")] <- counts[tmp$Group.1]
-        tmp               <- tmp[, !colnames(tmp) %in% exclude.cols]
-        cells[selector,colnames(tmp)] <- tmp[selector,]
+        tmp                                   <- tmp[, !colnames(tmp) %in% exclude.cols]
+        
+        # Assign the columns to the output matrix
+        cells[selector,colnames(tmp)]         <- tmp[selector,]
         
       } else if(merging.strategy == "none") {
         if (add.global.id) {cur <- add.global.ids(cur)}

@@ -9,7 +9,7 @@ process prepare_manifest {
         tuple val(plate), val(index_xml)
     output:
         path "manifest.tsv", emit: manifest
-        tuple path("Index.xml"), path("Index.json"), path("acquisition_info.txt"), emit: metadata
+        tuple path("Index.*xml"), path("Index.json"), path("acquisition_info.txt"), emit: metadata
         //path('AssayLayout', optional: true), emit assay_layout
     script:
         cmd =
@@ -288,13 +288,14 @@ process cellprofiler {
     //publishDir "$params.rn_publish_dir/cellprofiler", mode: 'move'
     storeDir "$params.rn_publish_dir/cellprofiler"
     scratch params.rn_scratch
+    //errorStrategy { task.attempt <= 2 ? "retry" : "ignore" }
 
     input:
         tuple val(plate), val(key), val(well), val(row), val(col), path(cell_masks), path(nucl_masks), val(merge_plates), path(registration), val(basicpy_string)
     output:
         //path "features/$plate/$row/$col/*.tsv"
         //path "features/$plate/$row/$col/*.txt"
-        path "features/$plate/$row/$col/*.zip"
+        path "features/$plate/$row/$col/*"
     script:
         // Outputs the cp files into ./images
         cmd = 
@@ -366,8 +367,11 @@ process cellprofiler {
         if (!params.cpr_no_zip) {
             cmd +=
             """
-            
+
             zip -r ./features/$plate/$row/$col/${plate}_${well}.zip ./features/$plate/$row/$col/*.txt
+            
+            # Cleanup so only zip is staged
+            rm ./features/$plate/$row/$col/*.txt
             
             """
         }

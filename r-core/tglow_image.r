@@ -58,7 +58,7 @@ tglow.composite.image <- function(images, colors) {
       stop(paste0("Dimensions of image not equal to 2, is it greyscale. At index ", i))
     }
     
-    rgb <- tglow.hex.to.rgb(colors[i])
+    rgb <- tglow.hex.to.rgb(gplots::col2hex(colors[i]))
     img <- channel(image, mode="rgb")
     
     if (is.null(comp)) {

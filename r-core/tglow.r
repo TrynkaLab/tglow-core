@@ -1,4 +1,4 @@
-setClassUnion(name = 'AnyMatrix', members = c("matrix", "dgCMatrix", "NULL"))
+setClassUnion(name = 'AnyMatrix', members = c("matrix", "NULL"))
 
 #-------------------------------------------------------------------------------
 setClass("TglowAssay",
@@ -135,3 +135,11 @@ function(x, i, j, drop=F) {
 })
 
 
+#-------------------------------------------------------------------------------
+#setMethod("AddAssay",
+#signature("TglowDataset", "TglowAssay"),
+#function(object, assay) {
+
+  
+          
+#})
