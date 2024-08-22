@@ -262,7 +262,7 @@ process deconvolute {
     script:
         cmd =
         """
-        python $params.tg_core_dir/run_redlionfish.py \
+        python $params.tg_core_dir/run_richardson_lucy.py \
         --input $params.rn_image_dir \
         --plate $plate \
         --well $well \
@@ -275,6 +275,14 @@ process deconvolute {
         
         if (params.rn_max_project) {
             cmd += " --max_project"
+        }
+        
+        if (params.dc_psf_subsample_z) {
+            cmd += " --psf_subsample_z $params.dc_psf_subsample_z"
+        }
+        
+        if (params.dc_psf_crop_z) {
+            cmd += " --psf_crop_z $params.dc_psf_crop_z"
         }
         
         cmd

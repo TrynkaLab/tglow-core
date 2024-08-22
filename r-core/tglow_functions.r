@@ -87,6 +87,13 @@ tglow.fetch.representative.cell.quantiles <- function(dataset, feature, assay="c
   
   lower <- which(cur.assay[, col.obj.id] %in% idx[head(fs, n=(n*2)+1)])
   upper <- which(cur.assay[, col.obj.id] %in% idx[tail(fs, n=(n*2)+1)])
+
+  l10 <- tglow.fetch.representative.cell(dataset,
+    feature=feature,
+    assay=assay,
+    metric="lower.q",
+    q=0.10,
+    n=n)
   
   l25 <- tglow.fetch.representative.cell(dataset,
     feature=feature,
@@ -108,14 +115,23 @@ tglow.fetch.representative.cell.quantiles <- function(dataset, feature, assay="c
     metric="lower.q",
     q=0.75,
     n=n)
+
+  l90 <- tglow.fetch.representative.cell(dataset,
+    feature=feature,
+    assay=assay,
+    metric="lower.q",
+    q=0.90,
+    n=n)
                                          
   cn <- c(rep(paste0("q0 - ", name), (n*2)+1),
+        rep(paste0("q10 - ", name), (n*2)+1),
         rep(paste0("q25 - ", name), (n*2)+1),
         rep(paste0("q50 - ", name), (n*2)+1),
         rep(paste0("q75 - ", name), (n*2)+1),
+        rep(paste0("q90 - ", name), (n*2)+1),
         rep(paste0("q100 - ", name), (n*2)+1))
                                 
-  return(list(ids=c(lower, l25, l50, l75, upper), names=cn))         
+  return(list(ids=c(lower, l10, l25, l50, l75, l90, upper), names=cn))         
   
 }
 
@@ -911,7 +927,7 @@ fcolScale <- function(x,
 #' Updated by jm52 to return a dataframe of the same structure as output$cells so we can still use output$features$analyze
 #'
 
-tglow.correct <- function(dataset, assay = "cells", to.correct = "plate_id", assay.out = "cells_corrected", features = NULL){
+tglow.correct <- function(dataset, assay = "cells", to.correct = "plate_id", assay.out = "cells_corrected", features = NULL, img.id.col="Image_ImageNumber_Global"){
   
   # Defining the features 
   if (is.null(features)) {
@@ -925,7 +941,7 @@ tglow.correct <- function(dataset, assay = "cells", to.correct = "plate_id", ass
   # Make a basic dataframe with our variable to correct (z) for the function [so we do z ~ f]
   if(to.correct %in% colnames(dataset$meta)){ # if we want to correct a metadata variable
     
-    df <- data.frame(z = dataset$meta[dataset[[assay]]$Image_ImageNumber_Global, to.correct])
+    df <- data.frame(z = dataset$meta[dataset[[assay]][[img.id.col]], to.correct])
     
   } else{ # if we want to correct a feature (i.e: intensity)
     

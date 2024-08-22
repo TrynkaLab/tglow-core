@@ -61,7 +61,50 @@ class RedLionFish:
             keypair = val.split("=")
             log.info(f"Reading PSF: {keypair}")
             self.psfs[int(keypair[0])] = tifffile.imread(keypair[1])
- 
+            log.info(f"Read PSF {keypair[0]} with shape: {self.psfs[int(keypair[0])].shape}")
+            
+        # Trim PSFs
+        self.psf_stepsize=args.psf_subsample_z
+        self.psf_planes=args.psf_crop_z
+
+        for psf_key in self.psfs.keys():
+            
+            # Select every self.psf_stepsize planes out of the PSF
+            if self.psf_stepsize is not None:
+                
+                self.psf_stepsize = int(self.psf_stepsize)
+                psf_final = self.psfs[psf_key]
+                planes_to_keep=[]
+                planes_to_keep.append(round(psf_final.shape[0]/ 2))
+
+                for i in range(1, round(round(psf_final.shape[0]/self.psf_stepsize)/ 2)):
+                    planes_to_keep.append(round(psf_final.shape[0]/2) - (i*self.psf_stepsize))
+                    planes_to_keep.append(round(psf_final.shape[0]/2) + (i*self.psf_stepsize))
+
+                planes_to_keep.sort() 
+                self.psfs[psf_key] = psf_final[planes_to_keep,:,]
+                log.info(f"Selected every {self.psf_stepsize} planes from PSF {psf_key}. Shape: {self.psfs[psf_key].shape}")
+
+            # Select the planes out of the PSF
+            if self.psf_planes is not None:
+                self.psf_planes = int(self.psf_planes)
+
+                psf_final=self.psfs[psf_key]
+                planes_to_keep=[]
+                planes_to_keep.append(round(psf_final.shape[0]/ 2))
+
+                for j in range(1, self.psf_planes):
+                    planes_to_keep.append(round(psf_final.shape[0]/2) - j)
+                    planes_to_keep.append(round(psf_final.shape[0]/2) + j)
+
+                planes_to_keep.sort() 
+                self.psfs[psf_key] = psf_final[planes_to_keep,:,]
+
+                log.info(f"Selected {self.psf_planes} planes +- arround the middle of the stack for PSF {psf_key}. Shape {self.psfs[psf_key].shape}")
+                
+        for psf_key in self.psfs.keys():
+            tifffile.imwrite(f"psf_{psf_key}_final.tiff", self.psfs[psf_key])
+
     
     def run(self):
         
@@ -74,7 +117,13 @@ class RedLionFish:
         iq = ImageQuery(self.plate, row, col, field)
         image = self.reader.read_image(iq)
         img = self.reader.get_img(iq)
+        
+        log.info(f"Read image of shape {image.shape}, padding zeroes in Z direction.")
 
+        pad_len = round(image.shape[1]/2)+1
+        image = np.pad(image, ((0,0),(pad_len, pad_len), (0, 0), (0, 0)), mode='constant', constant_values=0)
+        log.info(f"Padded image with zeroes in Z direction for final shape {image.shape}.")
+        
         decons = []
         for channel in self.channels:
             
@@ -86,6 +135,8 @@ class RedLionFish:
             else:
                 log.info(f"NOT deconvoluting field {field} channel {channel}")
                 cur_decon = image[channel,:,:,:]
+                
+            cur_decon = cur_decon[pad_len:-pad_len,:,:]
                 
             if self.max_project:
                 decons.append(np.max(cur_decon, axis=0, keepdims=True))
@@ -148,6 +199,8 @@ if __name__ == "__main__":
     parser.add_argument('--max_project', help="Output max projection over Z", action='store_true', default=False)
     parser.add_argument('--blacklist', help='TSV file with "<plate>  <well>" on each row descrbing what to ignore', default=None)
     parser.add_argument('--clip_max', help='Clip values above this prior to 32>16 bit conversion. Values below this will be preserved, but scaled and rounded to 16 bit range', default=65535)
+    parser.add_argument('--psf_crop_z', help='Number of planes arround the center of the PSF in z to crop. Defaults to all', default=None)
+    parser.add_argument('--psf_subsample_z', help='Select every x planes out of the PSF. If psf has a Z spacing of 100nm and your data 500nm select 5. Defaults to all planes.', default=None)
 
     parser.add_argument('--channels', help='Channels to output, zero indexed. Only channels specified in --psf are deconveluted!', nargs='+', default=None)
     parser.add_argument('--uint32', help="Write as 32 bit unsigned integer instead of clipping to 16 bit uint after applying basicpy model", action='store_true', default=False)
