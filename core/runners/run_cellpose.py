@@ -5,8 +5,12 @@ import logging
 import argparse
 from tglow.io.tglow_io import AICSImageReader
 from tglow.io.image_query import ImageQuery
+from tglow.utils.tglow_utils import float_to_16bit_unint
+from skimage.morphology import disk, ball, closing, binary_erosion
+from skimage.filters import threshold_otsu
 import os
 import math
+import tifffile
 
 # Cellpose logger
 #logger = io.logger_setup()
@@ -20,7 +24,9 @@ log.setLevel(logging.DEBUG)
 
 class CellposeRunner():
     
-    def __init__(self, path, plate, output, model, nucl_channel, other_channel, diameter, diameter_nucl, do_3d, anisotropy=None, min_cell_area=None, min_nucl_area=None, fields=None, plot=False, flow_thresh=0.4, prob_thresh=0, use_nucl_for_declump=True):
+    def __init__(self, path, plate, output, model, model_nucl, nucl_channel, other_channel, diameter, diameter_nucl,
+                do_3d, anisotropy=None, min_cell_area=None, min_nucl_area=None, fields=None, plot=False, flow_thresh=0.4,
+                prob_thresh=0, use_nucl_for_declump=True, nucl_power=None, cell_power=None, post_process=True):
         
         self.path=path
         self.plate=plate
@@ -32,6 +38,7 @@ class CellposeRunner():
         
         self.output=output
         self.model=model
+        self.model_nucl=model_nucl,
         self.nucl_channel=nucl_channel
         self.other_channel=other_channel
         self.diameter=diameter
@@ -39,8 +46,8 @@ class CellposeRunner():
         
         self.flow_thresh=flow_thresh
         self.prob_thresh=prob_thresh
-        # Minimum object area in pixels
         
+        # Minimum object area in pixels
         if min_cell_area is None:
             if self.do_3d:
                 self.min_size = 4/3 * math.pi * (self.diameter/6)**3
@@ -67,10 +74,14 @@ class CellposeRunner():
             
         self.use_nucl_for_declump=use_nucl_for_declump
 
-        log.info(f"Set cell diam:{self.diameter} min area: {self.min_size}")
-        log.info(f"Set nucl diam:{self.diameter_nucl} min area: {self.min_size_nucl}")
+        log.info(f"Set cell diam:{self.diameter} min area/volume: {self.min_size}")
+        log.info(f"Set nucl diam:{self.diameter_nucl} min area/volume: {self.min_size_nucl}")
 
         self.plot=plot
+        
+        self.cell_power=cell_power
+        self.nucl_power=nucl_power
+        self.post_process=post_process
         
     def __init_reader__(self):
         
@@ -138,23 +149,45 @@ class CellposeRunner():
             
         log.debug(f"Read images in stack of shape {img.shape}")
          
+        log.debug(f"Model: {self.model}")
+        log.debug(f"Model nucl: {self.model_nucl[0]}")
+        
+        cellprob_thresh = self.prob_thresh
+        if self.cell_power is not None:
+            img = img.astype(np.float32)
+            img = img / np.iinfo(np.uint16).max#np.max(nucl)
+            img = img**self.cell_power
+            img = img / np.max(img)
+            #img = img / np.percentile(img, 99)
+            img = float_to_16bit_unint(img * np.iinfo(np.uint16).max)
+            cellprob_thresh = self.cellprob_thresh-self.cell_power
+
+
         start_time = time.time()
-        masks, flows, styles, diams = model.eval(img,
+        masks, flows, styles, diams = self.model.eval(img,
                                                 diameter=self.diameter,
                                                 channels=channels,
                                                 channel_axis=channel_axis,
                                                 do_3D=self.do_3d,
-                                                anisotropy=self.anisotropy,
                                                 min_size=self.min_size,
+                                                anisotropy=self.anisotropy,
                                                 flow_threshold=self.flow_thresh,
-                                                cellprob_threshold=self.prob_thresh)
+                                                cellprob_threshold=cellprob_thresh)
         log.info("Cell mask running time %s seconds" % round(time.time() - start_time))
 
         if not os.path.exists(f"{self.output}/{query.plate}/{query.get_row_letter()}/{query.col}/"):
             os.makedirs(f"{self.output}/{query.plate}/{query.get_row_letter()}/{query.col}")
 
-        # save results as png
-        io.save_masks(img, masks, flows, f"{self.output}/{query.plate}/{query.get_row_letter()}/{query.col}/{query.field}_cell_mask_d{str(self.diameter)}_ch{self.other_channel}", tif=True, png=False, save_outlines=self.plot)
+        # save results
+        tifffile.imwrite(f"{self.output}/{query.plate}/{query.get_row_letter()}/{query.col}/{query.field}_cell_mask_d{str(self.diameter)}_ch{self.other_channel}_cp_masks.tiff", masks)
+
+        #io.save_masks(img,
+        #            masks,
+        #            flows,
+        #            f"{self.output}/{query.plate}/{query.get_row_letter()}/{query.col}/{query.field}_cell_mask_d{str(self.diameter)}_ch{self.other_channel}",
+        #            tif=True,
+        #            png=False,
+        #            save_outlines=self.plot)
         
         start_time = time.time()
         
@@ -167,18 +200,83 @@ class CellposeRunner():
             else:
                 nucl = data_nucl
             
-            masks, flows, styles, diams = model.eval(nucl,
+            #log.debug(f"Filtering {nucl.shape}")
+            #for plane in range(0, nucl.shape[0]):
+            #    log.debug(f"Filtering {plane}")
+            #    nucl[plane,:,:] = skimage.filters.median(nucl[plane,:,:], disk(5))
+            #nucl = median(nucl, ball(10))
+            #tifffile.imwrite("debug_nucl_img_blurred.tiff", nucl)
+                    #cellprob_threshold=self.prob_thresh
+            
+            # Nucleus channel can have a high local background, especially in Z direction leading to strong bleedover. 
+            #log.info('Substracting local background in nucleus channel')
+            #bg = skimage.filters.threshold_local(nucl, 35)
+            #nucl = nucl - bg
+            #nucl[nucl < 0] = 0
+            #nucl = float_to_16bit_unint(nucl)
+            
+            # Binarize cell masks
+            masks_bin = (masks > 0).astype(np.uint16)
+                
+            cellprob_thresh = self.prob_thresh
+            if self.nucl_power is not None:
+                nucl = nucl.astype(np.float32)
+                nucl = nucl / np.iinfo(np.uint16).max#np.max(nucl)
+                nucl = nucl**self.nucl_power
+                # Normalize against the max percentile inside cell objects
+                # to avoid normalizing against very overexposed areas.
+                tmp = nucl * masks_bin
+                nucl = nucl / np.max(tmp)
+                nucl = float_to_16bit_unint(nucl * np.iinfo(np.uint16).max)
+                cellprob_thresh = self.cellprob_thresh-self.nucl_power
+            
+            #tifffile.imwrite(f"{self.output}/{query.plate}/{query.get_row_letter()}/{query.col}/{query.field}_debug.tiff", nucl)
+            nucl_masks, flows, styles, diams = self.model_nucl[0].eval(nucl,
                                                     diameter=self.diameter_nucl,
                                                     channels=[0,0],
                                                     do_3D=self.do_3d,
                                                     anisotropy=self.anisotropy,
                                                     min_size=self.min_size_nucl,
                                                     flow_threshold=self.flow_thresh,
-                                                    cellprob_threshold=self.prob_thresh)
+                                                    cellprob_threshold=cellprob_thresh)
             log.info("Nucleus running time %s seconds" % round(time.time() - start_time))
 
+            # Close up small gaps when raising to a power
+            if self.post_process and self.do_3d:
+                
+                for plane in range(0, nucl_masks.shape[0]):
+                    log.debug(f"Closing {plane}")
+                    nucl_masks[plane,:,:] = closing(nucl_masks[plane,:,:], disk(3))
+                
+                # Set a global threshold for nuclei, to remove bits where cellpose fits to the background
+                nucl_thresh = (nucl > threshold_otsu(nucl)).astype(np.uint16)
+                
+                # Run a 2d closing operation on the threshold mask
+                for plane in range(0, nucl_thresh.shape[0]):
+                    log.debug(f"Closing {plane}")
+                    nucl_thresh[plane,:,:] = closing(nucl_thresh[plane,:,:], disk(10))
+                
+                # Remove areas of the nucleus mask which don't pass thresh
+                nucl_masks = nucl_masks * nucl_thresh
+                    
+                # Erode by 1
+                #for plane in range(0, masks_bin.shape[0]):
+                #    log.debug(f"Eroding {plane}")
+                #    masks_bin[plane,:,:] = binary_erosion(masks_bin[plane,:,:], disk(1))
+                                    
+                # Remove the area not within the cell
+                #nucl_masks = nucl_masks * masks_bin
+                
+
+            tifffile.imwrite(f"{self.output}/{query.plate}/{query.get_row_letter()}/{query.col}/{query.field}_nucl_mask_d{self.diameter_nucl}_ch{self.nucl_channel}_cp_masks.tiff", nucl_masks)
             # save results as png
-            io.save_masks(img, masks, flows, f"{self.output}/{query.plate}/{query.get_row_letter()}/{query.col}/{query.field}_nucl_mask_d{self.diameter_nucl}_ch{self.nucl_channel}", tif=True, png=False, save_outlines=self.plot)
+            #io.save_masks(img,
+            #            masks,
+            #            flows,
+            #            f"{self.output}/{query.plate}/{query.get_row_letter()}/{query.col}/{query.field}_nucl_mask_d{self.diameter_nucl}_ch{self.nucl_channel}",
+            #            tif=True,
+            #            png=False,
+            #            save_outlines=self.plot)
 
 
 if __name__ == "__main__":
@@ -203,13 +301,19 @@ if __name__ == "__main__":
     parser.add_argument('--plot', help="Plot overlay masks", action='store_true', default=False)
     parser.add_argument('--flow_threshold', help="Cellpose flow threshold", default=0.4)
     parser.add_argument('--prob_threshold', help="Cellpose cell probability threshold", default=0)
+    parser.add_argument('--nucl_power', help="Raises the nucleus image to this power as a form of soft thresholding. Sets cellprob threshold to -6.", default=None)
+    parser.add_argument('--cell_power', help="Raises the cell image to this power as a form of soft thresholding. Sets cellprob threshold to -6.", default=None)
     parser.add_argument('--dont_use_nucl_for_declump', help="Fit nucleus masks, but do not supply as a 2nd channel to model.", action='store_true', default=False)
+    parser.add_argument('--dont_post_process', help="Output the raw celllpose masks, without constraints on nuclei and filtering [3d only]", action='store_true', default=False)
+
 
     args = parser.parse_args()
     
     # Init cellpose model
     model = models.Cellpose(gpu=args.gpu, model_type=args.model)
-    
+    #model_nucl = models.Cellpose(gpu=args.gpu, model_type="cyto2")
+    model_nucl = model
+ 
     if not args.no_3d and args.diameter is None:
         e = "Must provide --diameter if running in 3d mode"
         log.error(e)
@@ -228,6 +332,7 @@ if __name__ == "__main__":
                             args.plate,
                             args.output,
                             model,
+                            model_nucl,
                             args.nucl_channel,
                             args.cell_channel,
                             int(args.diameter) if args.diameter is not None else args.diameter,
@@ -240,7 +345,11 @@ if __name__ == "__main__":
                             args.plot,
                             float(args.flow_threshold),
                             float(args.prob_threshold),
-                            not args.dont_use_nucl_for_declump)
+                            not args.dont_use_nucl_for_declump,
+                            float(args.nucl_power) if args.nucl_power is not None else args.nucl_power,
+                            float(args.cell_power) if args.cell_power is not None else args.cell_power,
+                            not args.dont_post_process
+)
     
     # Loop, ideally one plate and well at the time is supplied, but can run all
     for plate in args.plate:

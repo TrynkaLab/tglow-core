@@ -109,7 +109,6 @@ raw_img_max = np.max(raw_img, axis=0)
 # Plot 
 plot_grey_as_magma(raw_img_max, f"{outdir}/raw_img_max.png")
 
-#norm_img_max = (raw_img_max / np.max(raw_img_max)) * np.iinfo(raw_img_max.dtype).max
 norm_img_max = raw_img_max / np.max(raw_img_max)
 
 # Plot 

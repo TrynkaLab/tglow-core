@@ -191,6 +191,15 @@ process cellpose {
             cmd += " --dont_use_nucl_for_declump"
         }
         
+        if (params.cp_cell_power) {
+            cmd += " --cell_power $params.cp_cell_power"
+        }
+        
+        if (params.cp_nucl_power) {
+            cmd += " --nucl_power $params.cp_nucl_power"
+        }
+        
+        
         // Add a fake nucleus channel because nextflow doesn't play nicely with 
         // tuples and mulptiple input files, otherwise making sure wells and channels are 
         // matched turns into a pain
@@ -266,7 +275,6 @@ process deconvolute {
         --input $params.rn_image_dir \
         --plate $plate \
         --well $well \
-        --mode gpu \
         --psf $psf_string \
         --output ./ \
         --clip_max $params.dc_clip_max \
@@ -275,6 +283,14 @@ process deconvolute {
         
         if (params.rn_max_project) {
             cmd += " --max_project"
+        }
+        
+        if (params.dc_mode) {
+            cmd += " --mode $params.dc_mode"
+        }
+        
+        if (params.dc_regularization) {
+            cmd += " --regularization $params.dc_regularization"
         }
         
         if (params.dc_psf_subsample_z) {

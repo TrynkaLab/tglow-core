@@ -2,9 +2,11 @@ import logging
 import tifffile
 import os
 import argparse
-import RedLionfishDeconv as rl
+import RedLionfishDeconv as rlf
 import numpy as np
+import pyopencl as cl
 
+from clij2fft.richardson_lucy import richardson_lucy_nc, richardson_lucy
 from tglow.io.tglow_io import AICSImageReader, BlacklistReader, AICSImageWriter
 from tglow.io.image_query import ImageQuery
 from tglow.utils.tglow_utils import float_to_16bit_unint, float_to_32bit_unint, dict_to_str, float_to_16bit_unint_scaled
@@ -17,7 +19,7 @@ logging.basicConfig(format='%(asctime)s %(message)s')
 log = logging.getLogger(__name__)
 log.setLevel(logging.DEBUG)
 
-class RedLionFish:
+class RunDecon:
     
     def __init__(self, args):
         
@@ -30,7 +32,23 @@ class RedLionFish:
 
         self.blacklist = args.blacklist
         self.niter = int(args.niter)
+        self.regularization = float(args.regularization)
+        
         self.mode = args.mode
+        
+        if self.mode.startswith("clij2"):
+            try:
+                platforms = cl.get_platforms()
+                if len(platforms) <= 0:
+                    raise RuntimeError("Could not find a valid open cl platform. Check your enviroment.")
+                devices=platforms[0].get_devices()
+
+                for device in devices:
+                    log.info(f"Found open CL device: {device}")
+                    log.info(f"Device has {device.get_info(cl.device_info.GLOBAL_MEM_SIZE)} mem available.")
+            except:
+                raise RuntimeError("Could not find a valid open cl platform. Check your enviroment.")
+      
         self.max_project = args.max_project
         self.uint32 = args.uint32
         self.clip_max=int(args.clip_max)
@@ -118,25 +136,33 @@ class RedLionFish:
         image = self.reader.read_image(iq)
         img = self.reader.get_img(iq)
         
-        log.info(f"Read image of shape {image.shape}, padding zeroes in Z direction.")
+        log.info(f"Read image of shape {image.shape}")
 
-        pad_len = round(image.shape[1]/2)+1
-        image = np.pad(image, ((0,0),(pad_len, pad_len), (0, 0), (0, 0)), mode='constant', constant_values=0)
-        log.info(f"Padded image with zeroes in Z direction for final shape {image.shape}.")
-        
         decons = []
         for channel in self.channels:
             
             if (channel in self.psfs):  
                 log.info(f"Deconvoluting field {field} channel {channel}")
-                cur_decon = self.deconvolute(image, channel)
+
+                if self.mode == "clij2":
+                    cur_decon = self.deconvolute_clij2(image, channel)
+                elif self.mode == "clij2_nc":
+                    cur_decon = self.deconvolute_clij2_nc(image, channel)
+                elif self.mode.startsWith("rlf_"):
+                    # This is already done by clij2
+                    #pad_len = round(image.shape[1]/2)+1
+                    #image = np.pad(image, ((0,0),(pad_len, pad_len), (0, 0), (0, 0)), mode='constant', constant_values=0)
+                    #log.info(f"Padded image with zeroes in Z direction for final shape {image.shape}.")
+                    cur_decon = self.deconvolute_rlf(image, channel)
+                    # This is already done by clij2
+                    #cur_decon = cur_decon[pad_len:-pad_len,:,:]
+                else:
+                    raise(f"{self.mode} is not a valid decon mode")
                 
                 log.debug(f"dtype: {cur_decon.dtype} max: {np.max(cur_decon)}")
             else:
                 log.info(f"NOT deconvoluting field {field} channel {channel}")
                 cur_decon = image[channel,:,:,:]
-                
-            cur_decon = cur_decon[pad_len:-pad_len,:,:]
                 
             if self.max_project:
                 decons.append(np.max(cur_decon, axis=0, keepdims=True))
@@ -151,17 +177,37 @@ class RedLionFish:
         
         log.debug(f"Final dtype: {decon.dtype} max: {np.max(decon)}")
 
-        
         log.info(f"Writing stack of dims {decon.shape}")
         self.writer.write_stack(decon, iq, img.channel_names, img.physical_pixel_sizes)
-               
-    def deconvolute(self, image, channel):
+        
+        
+    def deconvolute_clij2(self, image, channel):
     
         psf = self.psfs[channel]
-        decon = rl.doRLDeconvolutionFromNpArrays(image[channel,:,:,:],
+        decon = richardson_lucy(image[channel,:,:,:],
+                                psf,
+                                numiterations=self.niter,
+                                regularizationfactor=self.regularization)
+        
+        return(decon)
+    
+    def deconvolute_clij2_nc(self, image, channel):
+    
+        psf = self.psfs[channel]
+        decon = richardson_lucy_nc(image[channel,:,:,:],
+                                   psf,
+                                   numiterations=self.niter,
+                                   regularizationfactor=self.regularization)
+        
+        return(decon)
+               
+    def deconvolute_rlf(self, image, channel):
+    
+        psf = self.psfs[channel]
+        decon = rlf.doRLDeconvolutionFromNpArrays(image[channel,:,:,:],
                                         psf,
                                         niter=self.niter,
-                                        method=self.mode)
+                                        method= "gpu" if self.mode == "rlf_gpu" else "cpu")
         
         return(decon)
         
@@ -182,7 +228,6 @@ class RedLionFish:
         log.info(f"Output 32bit:\t{str(self.uint32)}")    
         
      
-
 # Main loop
 if __name__ == "__main__":
             
@@ -195,7 +240,8 @@ if __name__ == "__main__":
     parser.add_argument('--fields', help='Fields to use. <field #1> | [<field #1> <field #2> <field #n>]', nargs='+', default=None)
     parser.add_argument('--psf', help='Point spread functions <zero index channel id>=/path/to/tiff', nargs='+')
     parser.add_argument('--niter', help='Number of RL iterations', default=10)
-    parser.add_argument('--mode', help='Mode of caluclating RL. cpu|gpu', default="gpu")
+    parser.add_argument('--regularization', help='Regularization parameter. Only used for CLI2', default=0.0002)
+    parser.add_argument('--mode', help='Mode of caluclating RL. clij2 | clij2_nc | rlf_cpu | rlf_gpu', default="clij2")
     parser.add_argument('--max_project', help="Output max projection over Z", action='store_true', default=False)
     parser.add_argument('--blacklist', help='TSV file with "<plate>  <well>" on each row descrbing what to ignore', default=None)
     parser.add_argument('--clip_max', help='Clip values above this prior to 32>16 bit conversion. Values below this will be preserved, but scaled and rounded to 16 bit range', default=65535)
@@ -213,7 +259,7 @@ if __name__ == "__main__":
     
     
     log.debug(f"FIELDS: {args.fields}")
-    runner=RedLionFish(args)
+    runner=RunDecon(args)
     runner.printParams()
     log.info("-----------------------------------------------------------")
     
