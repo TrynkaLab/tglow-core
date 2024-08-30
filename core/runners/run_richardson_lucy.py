@@ -120,8 +120,8 @@ class RunDecon:
 
                 log.info(f"Selected {self.psf_planes} planes +- arround the middle of the stack for PSF {psf_key}. Shape {self.psfs[psf_key].shape}")
                 
-        for psf_key in self.psfs.keys():
-            tifffile.imwrite(f"psf_{psf_key}_final.tiff", self.psfs[psf_key])
+        #for psf_key in self.psfs.keys():
+        #    tifffile.imwrite(f"psf_{psf_key}_final.tiff", self.psfs[psf_key])
 
     
     def run(self):

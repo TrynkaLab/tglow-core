@@ -284,6 +284,8 @@ class AICSImageReader():
         self.fields = {}
         self.images = {}
         fields = []
+        
+        self.suffix=None
 
         for plate in plates:
             rows = self.__list_directories__(f"{self.path}/{plate}")
@@ -311,14 +313,21 @@ class AICSImageReader():
                         nwells_blacklisted=nwells_blacklisted+1
                         continue
                         
-                        
                     nwells = nwells+1
                     wells[plate].add(well)
                     
                     fields = glob.glob(f"{self.path}/{plate}/{row}/{col}/{self.pattern}")
+                    
+                    if self.suffix is None:
+                        filename = os.path.basename(os.path.normpath(fields[0]))
+                        self.suffix = re.sub("^\d+", "", filename, count=1)
+                        log.info(f"Set file suffix to {self.suffix}")
+
                     fields = [os.path.normpath(f) for f in fields]
                     fields = [os.path.basename(f) for f in fields]
-                    fields = [f.replace(self.pattern[1:], "") for f in fields]
+                    #fields = [f.replace(self.pattern[1:], "") for f in fields]
+                    fields = [f.replace(self.suffix, "") for f in fields]
+
                     
                     if self.fields_filter is not None:
                         fields = [field for field in fields if field in self.fields_filter]
@@ -353,7 +362,7 @@ class AICSImageReader():
         return self.wells[plate]
     
     def get_img(self, query):
-        img = AICSImage(f"{self.path}/{query.plate}/{ImageQuery.ID_TO_ROW[query.row]}/{query.col}/{query.field}.ome.tiff")
+        img = AICSImage(f"{self.path}/{query.plate}/{ImageQuery.ID_TO_ROW[query.row]}/{query.col}/{query.field}{self.suffix}")
         return img
     
     def read_image(self, query) -> np.ndarray:
@@ -362,7 +371,8 @@ class AICSImageReader():
             raise TypeError("Query is not of type ImageQuery")    
         
         #img = AICSImage(f"{self.path}/{query.plate}/{ImageQuery.ID_TO_ROW[query.row]}/{query.col}/{query.field}.ome.tiff")
-        img = OmeTiffReader(f"{self.path}/{query.plate}/{ImageQuery.ID_TO_ROW[query.row]}/{query.col}/{query.field}.ome.tiff")
+        #img = OmeTiffReader(f"{self.path}/{query.plate}/{ImageQuery.ID_TO_ROW[query.row]}/{query.col}/{query.field}{self.suffix}")
+        img = AICSImage(f"{self.path}/{query.plate}/{ImageQuery.ID_TO_ROW[query.row]}/{query.col}/{query.field}{self.suffix}")
 
         if (query.channel is None) and (query.plane is None):
             # returns 4D CZYX numpy array

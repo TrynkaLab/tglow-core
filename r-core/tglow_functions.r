@@ -163,7 +163,7 @@ tglow.run.assoc <- function(dataset, predictor, assay="cells_norm", method="lm",
   
   if (method == "lm") {
 
-    if (predictor %in% colnames(dataset$meta) & assay %in% c("cells", "cells_corrected", "cells_corrected_norm", "cells_norm", "cells_transform", "cells_log", "cells_sqr", "cells_res")) {
+    if (predictor %in% colnames(dataset$meta) & assay %in% c("cells", "cells_corrected", "cells_corrected_norm", "cells_norm", "cells_transform", "cells_log", "cells_sqr", "cells_res", "cells_corrected_for_intensity_norm")) {
 
       x <- dataset$meta[dataset[[assay]][,img.id.col], predictor]
 

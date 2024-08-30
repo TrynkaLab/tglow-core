@@ -33,13 +33,13 @@ process prepare_manifest {
         //}
         
         // Only keep the first few lines 
-        if (params.rn_testmode) {
-            cmd += 
-            """
-            head -n 3 manifest.tsv > tmp
-            mv tmp manifest.tsv
-            """
-        }
+        //if (params.rn_testmode) {
+        //    cmd += 
+        //    """
+        //    head -n 3 manifest.tsv > tmp
+        //    mv tmp manifest.tsv
+        //    """
+        //}
         cmd
     
     //manifest = params.tglow_image_dir + "/" + plate + "/" + "manifest.tsv"
@@ -146,7 +146,7 @@ process cellpose {
         //path "${plate}/${row}/${col}/*_cell_mask*.tif", emit: cell_masks
         //path("${plate}/${row}/${col}/*_nucl_mask*.tif"), emit: nucl_masks, optional: true
                 //tuple val(plate), val(well), val(row), val(col), val("dave"), val("john"), emit: cellpose_out
-        tuple val(plate), val(well), val(row), val(col), path("${plate}/${row}/${col}/*_cell_mask*_ch${cell_channel}*.tif"), path("${plate}/${row}/${col}/*_nucl_mask*_ch${nucl_channel}*.tif"), emit: cellpose_out //, path("${plate}/${row}/${col}/*_nucl_mask*.tif"), emit: cellpose_out
+        tuple val(plate), val(well), val(row), val(col), path("${plate}/${row}/${col}/*_cell_mask*_ch${cell_channel}*.*"), path("${plate}/${row}/${col}/*_nucl_mask*_ch${nucl_channel}*.*"), emit: cellpose_out //, path("${plate}/${row}/${col}/*_nucl_mask*.tif"), emit: cellpose_out
         
     script:
         cmd =
@@ -183,7 +183,7 @@ process cellpose {
             cmd += " --min_nucl_area $params.cp_min_nucl_area"
         }
         
-        if (params.rn_max_project) {
+        if (params.rn_max_project & !params.rn_hybrid) {
             cmd += " --no_3d"
         }
         
@@ -199,6 +199,13 @@ process cellpose {
             cmd += " --nucl_power $params.cp_nucl_power"
         }
         
+        if (params.cp_dont_post_process) {
+            cmd += " --dont_post_process"
+        }
+        
+        if (params.cp_downsample) {
+            cmd += " --downsample $params.cp_downsample"
+        }
         
         // Add a fake nucleus channel because nextflow doesn't play nicely with 
         // tuples and mulptiple input files, otherwise making sure wells and channels are 
@@ -281,7 +288,7 @@ process deconvolute {
         --niter $params.dc_niter\
         """
         
-        if (params.rn_max_project) {
+        if (params.rn_max_project & !params.rn_hybrid) {
             cmd += " --max_project"
         }
         
@@ -315,14 +322,22 @@ process cellprofiler {
     //errorStrategy { task.attempt <= 2 ? "retry" : "ignore" }
 
     input:
-        tuple val(plate), val(key), val(well), val(row), val(col), path(cell_masks), path(nucl_masks), val(merge_plates), path(registration), val(basicpy_string)
+        tuple val(plate), val(key), val(well), val(row), val(col), path(cell_masks), path(nucl_masks), val(merge_plates), path(registration, stageAs:"registration/*"), val(basicpy_string), val(mask_channels)
     output:
         //path "features/$plate/$row/$col/*.tsv"
         //path "features/$plate/$row/$col/*.txt"
         path "features/$plate/$row/$col/*"
     script:
+    
+        // Stage the masks so cellprofiler can access them
+        cmd = "\nmkdir -p ./masks/$plate/$row/$col"
+        cmd += "\nmv " + cell_masks.join(" ") + " ./masks/$plate/$row/$col/"
+        if (!nucl_masks[0].name.startsWith("NO_NUCL_MASK")) {
+            cmd += "\nmv " + nucl_masks.join(" ") + " ./masks/$plate/$row/$col/"
+        }
+    
         // Outputs the cp files into ./images
-        cmd = 
+        cmd += 
         """
         # Stage files
         python ${params.tg_core_dir}/stage_cellprofiler.py \
@@ -341,27 +356,62 @@ process cellprofiler {
             cmd += " --plate_merge " + merge_plates
         }
         
-        if (registration.name != "NO_REGISTRATION") {
-            cmd += " --registration_dir ./"
-            //cmd += " --registration_dir /lustre/scratch125/humgen/projects/cell_activation_tc/projects/DRUG_PERTURB/pipeline/results/registration/"
+        if (registration.fileName.name != "NO_REGISTRATION") {
+            cmd += " --registration_dir ./registration"
         }
                 
         if (basicpy_string) {
             cmd += " --basicpy_model $basicpy_string"
         }
         
-        if (params.rn_max_project) {
+        if (params.rn_max_project | params.rn_hybrid) {
             cmd += " --max_project --no_zstack"
         }
         
-                
-        // Stage the masks so cellprofiler can access them, 
-        // TODO: This is not very nextflow, but couldnt quickly figure out how to stage in a subfolder
-        cmd += "\nmv " + cell_masks.join(" ") + " ./images/$plate/$row/$col/"
-        
-        if (!nucl_masks[0].name.startsWith("NO_NUCL_MASK")) {
-            cmd += "\nmv " + nucl_masks.join(" ") + " ./images/$plate/$row/$col/"
+        if (params.rn_hybrid) {
+            cmd += " --mask_dir ./masks"
+            cmd += " --mask_pattern *_nucl_mask_*_cp_masks.tiff"
+            cmd += " --mask_channels $mask_channels"
         }
+        
+        
+        if (params.rn_hybrid) {
+            cmd += 
+            """
+            python ${params.tg_core_dir}/max_project.py \
+            --input ./masks \
+            --output ./images \
+            --well $well \
+            --plate $plate \
+            --pattern *_cell_mask_*_cp_masks.tiff \
+            --suffix _cell_mask_d00_ch0_cp_masks.tiff
+            """
+            
+            if (!nucl_masks[0].fileName.name.startsWith("NO_NUCL_MASK")) {
+                cmd += 
+                """
+                python ${params.tg_core_dir}/max_project.py \
+                --input ./masks \
+                --output ./images \
+                --well $well \
+                --plate $plate \
+                --pattern *_nucl_mask_*_cp_masks.tiff \
+                --suffix _nucl_mask_d00_ch0_cp_masks.tiff
+                """
+            }
+
+        } else {
+            cmd += "\nmv ./masks/$plate/$row/$col/* ./images/$plate/$row/$col/"
+        }
+        //else {
+            // This was the old way of doing things, now directly staged in mask dir
+            //cmd += "\nmv " + cell_masks.join(" ") + " ./images/$plate/$row/$col/"
+            //if (!nucl_masks[0].name.startsWith("NO_NUCL_MASK")) {
+            //    cmd += "\nmv " + nucl_masks.join(" ") + " ./images/$plate/$row/$col/"
+            //}
+            // Move raw masks for cellprofiler
+        //    cmd += "\nmv ./masks/$plate/$row/$col/* ./images/$plate/$row/$col/"
+        //}
          
         //cmd += "\ntouch done.tsv"     
         //cmd
@@ -381,7 +431,7 @@ process cellprofiler {
             cmd += " --plugins-directory $params.cpr_plugins"
         }
     
-        if (params.rn_max_project) {
+        if (params.rn_max_project | params.rn_hybrid) {
            cmd += " -p $params.cpr_pipeline_2d"
         } else {
             cmd += " -p $params.cpr_pipeline_3d"
@@ -406,6 +456,19 @@ process cellprofiler {
 // Workflow to stage the data from NFS to lustre
 workflow stage {
     main:
+        //------------------------------------------------------------
+        if (params.rn_publish_dir == null) {
+            error "rn_publish_dir file parameter is required: --rn_publish_dir"
+        }
+        
+        if (params.rn_manifest == null) {
+            error "rn_manifest file parameter is required: --rn_manifest"
+        }
+
+        // Set runtime defaults
+        params.rn_image_dir = params.rn_publish_dir + "/images"
+        params.rn_decon_dir = params.rn_publish_dir + "/decon"
+    
         // Read manifest
         manifest = Channel.fromPath(params.rn_manifest)
             .splitCsv(header:true, sep:"\t")
@@ -471,6 +534,19 @@ workflow run_pipeline {
 
     main:
         //------------------------------------------------------------
+        if (params.rn_publish_dir == null) {
+            error "rn_publish_dir file parameter is required: --rn_publish_dir"
+        }
+        
+        if (params.rn_manifest == null) {
+            error "rn_manifest file parameter is required: --rn_manifest"
+        }
+
+        // Set runtime defaults
+        params.rn_image_dir = params.rn_publish_dir + "/images"
+        params.rn_decon_dir = params.rn_publish_dir + "/decon"
+
+        //------------------------------------------------------------
         // Read manifest
         manifest = Channel.fromPath(params.rn_manifest)
             .splitCsv(header:true, sep:"\t")
@@ -482,8 +558,8 @@ workflow run_pipeline {
             row.cp_nucl_channel,
             row.cp_cell_channel,
             row.dc_channels,
-            row.dc_psfs)}
-            
+            row.dc_psfs,
+            row.mask_channels)}
         //manifest.view()
 
         // Blacklist channel, if missing just an empty channel
@@ -498,12 +574,12 @@ workflow run_pipeline {
         // Run basicpy
         
         // If there is no global overide on basicpy channels, get them from manifest
-        
         if (params.bp_channels == null) {
             def csvFile = new File(params.rn_manifest)
             def csvData = csvFile.readLines()
 
             def plate_channel = []
+            // TODO: Can this be changed out by remapping the manifest channel?
             // Skip header
             // Substract one from the channel is python is 0 indexed
             for (int i = 1; i < csvData.size(); i++) {
@@ -515,9 +591,7 @@ workflow run_pipeline {
                         plate_channel << tuple(curLine[0], channel.toInteger()-1)
                     }
                 }
-
-            }
-            
+            }   
             basicpy_in = Channel.from(plate_channel)
         } else {
             basicpy_in = Channel.from(params.bp_channels)
@@ -529,11 +603,11 @@ workflow run_pipeline {
         
         //------------------------------------------------------------
         // Loop over previously generated manifests assuming stage has been run
-        // Here we start to run the seqeuntial processes, the first part runs independently
         if (params.rn_manifest_well == null) {
             // code that reads paths available manfiests from previous stage
             //manifests_in = Channel.fromPath("${params.rn_image_dir}/*/manifest.tsv")
             
+            // TODO: can this be remapped from manifest channel?
             // Read which plates should be run, in the case the manifest has been edited
             // after running stage to run not all plates
             plates = []
@@ -563,7 +637,6 @@ workflow run_pipeline {
                                  
         // Filter blacklist
         if (params.rn_blacklist != null) {
-
             // Read blacklist as list of plate:well
             blacklist=[]
             
@@ -578,7 +651,16 @@ workflow run_pipeline {
                 (row.plate + ":" + row.well) !in blacklist       
             })
             
-        }                                
+        }
+        
+        // Filter to specific wells, usefull for testing
+        if (params.rn_wells != null) {
+            wells = params.rn_wells.split(",")
+            log.info("Selecting " + wells.size() + " wells: " + wells)
+
+            well_channel=well_channel.filter(row -> {row.well in wells})
+            well_channel.view()
+        }                  
     
         // Re-order the well channel for later merging
         well_in = well_channel.map{ row -> tuple(
@@ -592,7 +674,7 @@ workflow run_pipeline {
         // Deconvolute
         if (params.dc_run) {
             decon_in = well_in.combine(manifest, by: 0)
-            .filter(row -> {row[8] != "none"})
+            .filter(row -> {row[9] != "none"})
             .map{ row -> tuple(
                 row[0], // plate
                 row[1], // well
@@ -605,7 +687,9 @@ workflow run_pipeline {
             )}      
             
             // Deconvolute
-            cellpose_in = deconvolute(decon_in).map{ row -> tuple(
+            cellpose_in = deconvolute(decon_in)
+            .filter(row -> {row[5] != "none"})
+            .map{ row -> tuple(
                 row[0], // plate
                 row[1], // well
                 row[2], // row
@@ -676,7 +760,6 @@ workflow run_pipeline {
         
         // Run cellpose
         cellpose_out = cellpose(cellpose_in)
-
     
         //------------------------------------------------------------
         // Cellprofiler / get_features
@@ -695,6 +778,7 @@ workflow run_pipeline {
                     row[5]  // nucl masks
             )}
                 
+            //--------------------------------------------------------------------
             // Add registration
             if (registration_out != null) {
                 // re-key output
@@ -720,7 +804,7 @@ workflow run_pipeline {
                 )}
             }
             
-    
+            //--------------------------------------------------------------------
             // Basicpy models        
             if (basicpy_out != null) {
             
@@ -781,7 +865,6 @@ workflow run_pipeline {
                 // Append the basicpy models for a plate into that channel              
                 cellprofiler_in = cellprofiler_in.combine(basicpy_tmp, by: 1)
             } else {
-            
                 cellprofiler_in = cellprofiler_in.map{row -> tuple(
                         row[1], // plate
                         row[0], // key
@@ -794,14 +877,46 @@ workflow run_pipeline {
                         row[8], // registration path
                         null    // basicpy models       
                 )}
-                
             }
             
-            if (params.rn_testmode) {
-                cellprofiler_in = cellprofiler_in.take(3)
-                //cellprofiler_in.view()
+            //--------------------------------------------------------------------
+            // for in hybrid mode
+            if (params.rn_hybrid) {
+                cellprofiler_in = cellprofiler_in.combine(manifest, by: 0).map{row -> tuple(
+                    row[0], // plate
+                    row[1], // key
+                    row[2], // well
+                    row[3], // row
+                    row[4], // col
+                    row[5], // cell masks
+                    row[6], // nucl masks
+                    row[7], // merge plates
+                    row[8], // registration path
+                    row[9], // basicpy models   
+                    row[17].split(",").collect{it -> (it.toInteger() -1).toString()}.join(" ") // mask channels   
+                )}
+            } else {
+                cellprofiler_in = cellprofiler_in.map{row -> tuple(
+                    row[0], // plate
+                    row[1], // key
+                    row[2], // well
+                    row[3], // row
+                    row[4], // col
+                    row[5], // cell masks
+                    row[6], // nucl masks
+                    row[7], // merge plates
+                    row[8], // registration path
+                    row[9], // basicpy models   
+                    null // mask channels   
+                )}
             }
-
+            //cellprofiler_in.view()
+            
+            //if (params.rn_testmode) {
+            //    cellprofiler_in = cellprofiler_in.take(3)
+            //    cellprofiler_in.view()
+            //}
+            
             cellprofiler_out = cellprofiler(cellprofiler_in)
         
         }
