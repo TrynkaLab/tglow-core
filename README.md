@@ -2,10 +2,9 @@
 
 Core package for the python component of the tglow HCI analysis pipeline.
 
-
 # Install instructions
 
-Discalimer, this is not written to be very portable at the moment as it is using conda as package manager, and uses some configurable paths for custom scripts. Will containerize this at some point. Also the GPU installations might require some manual configuring within conda to get them to wrok.
+Discalimer, this is not written to be very portable at the moment as it is using conda as package manager, and uses some configurable paths for custom scripts. Will try to containerize this at some point. Also the GPU installations might require some manual configuring within conda to get them to wrok.
 
 ## High level dependencies
 
@@ -42,14 +41,14 @@ Clone the repo into a suitable install dir, then:
 
 ```
 git clone https://gitlab.internal.sanger.ac.uk/TrynkaLab/tglow-core
-cd tglow-core/core
+cd tglow-core
 pip install -e .
 ```
 
 To enable GPU install the GPU version of pytorch, following their instructions. I had more luck with the pip install
 then the conda version. This is required if you want to run deconvolution using CLIJ2. 
 
-Keep track of the install path of the conda enviroment, and the path of the `</path/to/this-repo>/runners` as this will need to be provided to nextflow.
+Keep track of the install path of the conda enviroment, as this will need to be provided to nextflow.
 
 ### Cellprofiler env
 
