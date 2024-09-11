@@ -21,7 +21,7 @@ tglow.assay.from.list <- function(output, assay, meta.cols, col.object) {
 
 #-------------------------------------------------------------------------------
 #' Tglow dataset from list
-tglow.dataset.from.list <- function(output, assay, meta.patterns=c("ImageNumber","ObjectNumber", "Object_Number"), img.feature.patterns=c("^AreaOccupied", "^ImageQuality", "^Granularity"), col.object="cell_ObjectNumber_Global", col.img.id="cell_ImageNumber_Global", col.meta.img.id="ImageNumber_Global") {
+tglow.dataset.from.list <- function(output, assay, meta.patterns=c("ImageNumber","ObjectNumber", "Object_Number", "Parent"), img.feature.patterns=c("^AreaOccupied", "^ImageQuality", "^Granularity"), col.object="cell_ObjectNumber_Global", col.img.id="cell_ImageNumber_Global", col.meta.img.id="ImageNumber_Global") {
   
   # Perform some sanity checks
   if(sum(c(assay, "meta") %in% names(output)) != 2) {
@@ -44,6 +44,7 @@ tglow.dataset.from.list <- function(output, assay, meta.patterns=c("ImageNumber"
   dataset                 <- new("TglowDataset")
   dataset@assays[["raw"]] <- main.assay  
   dataset@active.assay    <- "raw"
+  dataset@object.ids      <- output[[assay]][,col.object]
   
   # Filter meta
   dataset@meta           <- output[[assay]][, meta.cols]

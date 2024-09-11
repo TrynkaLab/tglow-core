@@ -763,6 +763,7 @@ workflow run_pipeline {
     
         //------------------------------------------------------------
         // Cellprofiler / get_features
+        // TODO: BUG! Need to make sure the merge plate is done as well BEFORE adding into channel
         if (params.cpr_run) {
     
             // Start with cellpose output
@@ -790,6 +791,9 @@ workflow run_pipeline {
                 
                 // merge
                 cellprofiler_in = cellpose_out.join(registration_out, by: 0)
+                
+                
+                
             } else {
                 cellprofiler_in = cellpose_out.map{row -> tuple(
                     row[0], // key

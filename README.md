@@ -30,7 +30,14 @@ Proccess:
 
 ### Known issues
 
-Sometimes upon running the pipeline for the first time, the run crashes, with 'file not found' exceptions on the Index.xml files. I have no clue why this happens, maybe its something with the specific node in the imaging queue not having the mount, but usually when I re-run without changing, it seems to run fine the 2nd time. I have had wierd issues like this with other NF pipelines in the past, so think its more a NF issue then anything else.
+#### Basicpy not producing proper flatfields
+Basicpy is quite sensitive to cell density, and I found it needs a proper coverage of foreground signal to work. It might take a little tweaking to get it to work well (see the options available). Alternatively, if the dataset is very sparse (10-20 cells per field) it might be better to only fit one model for all plates in an experiment run manually, rather then fitting one model per plate. This can easily be done, by just putting the basicpy models in the correct format in the results folder. See example bash scripts here (tbd) to manually fit a basicpy model per plate. On the TODO list is to generalize the correction options to use the PE flatfields if available (but these also stuggle with low density from quick inspection), or use some other strategy (averaging etc).
+
+#### Stage Cellprofiler not finding decon results when registering
+If you get crashes of some cellprofiler processes when deconveluting with multiple cycles, this is due to the fact the decon output is only syncronized to the reference plate, but currently ignores the 2nd cycle. This is a bug which needs fixing. The workarround is to first run with --cpr_run false to make sure all the decons are done, then run with --cpr_run true to run cellprofiler after that instance has completed.
+
+#### 'file not found' exceptions on the Index.xml files.
+Sometimes upon running the pipeline for the first time, the run crashes, with 'file not found' exceptions on the Index.xml files. I have no clue why this happens, maybe its something with the specific node in the imaging queue not having the mount, but usually when I re-run without changing, it seems to run fine the 2nd time. I have had wierd issues like this with other NF pipelines in the past, so think its more a NF issue then anything else. Update: I have not had this recently so perhaps it was a FARM related issue
 
 ## 2. run_pipeline:
 

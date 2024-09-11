@@ -1,6 +1,7 @@
 #!/usr/bin/env python 
 #
 # Adapted from Martin Prete's scripts
+# Works with both Opera Phenix and Operetta indices
 ####################################################################
 # Script invocation:
 # python actions/parse_xml.py \
@@ -78,7 +79,6 @@ if __name__ == '__main__':
         else:
             channel_names = None
             info_file.write("None detected\n")
-        
         
         info_file.write("\n")
 

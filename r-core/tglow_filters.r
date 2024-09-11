@@ -253,7 +253,7 @@ filter.max.sum <- function(...) {filter.sum(..., func=filter.max)}
 #-------------------------------------------------------------------------------
 #' NA filter
 filter.na <- function(vec, thresh, grouping=NULL) {
-  return((sum(is.na(vec))/length(vec)) < thresh)
+  return((sum(is.na(vec))/length(vec)) <= thresh)
 }
 
 filter.na.multicol <- function(vec, thresh, grouping) {
@@ -276,6 +276,14 @@ filter.zero.var <- function(vec, thresh=0) {
 }
 
 filter.zero.var.sum <- function(...) {filter.sum(..., func=filter.zero.var)}
+
+#-------------------------------------------------------------------------------
+#' Coefficient of variation filter
+filter.coef.var <- function(vec, thresh) {
+  return ((sqrt(Rfast::Var(vec[!is.na(vec)])) / mean(vec[!is.na(vec)])) > thresh)
+}
+
+filter.coef.var.sum <- function(...) {filter.sum(..., func=filter.zero.var)}
 
 #-------------------------------------------------------------------------------
 #' Minimum number of unique values

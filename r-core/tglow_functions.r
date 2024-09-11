@@ -927,7 +927,7 @@ fcolScale <- function(x,
 #' Updated by jm52 to return a dataframe of the same structure as output$cells so we can still use output$features$analyze
 #'
 
-tglow.correct <- function(dataset, assay = "cells", to.correct = "plate_id", assay.out = "cells_corrected", features = NULL, img.id.col="Image_ImageNumber_Global"){
+tglow.correct <- function(dataset, assay = "cells", to.correct, assay.out = "cells_corrected", residual.skip.cols=NULL, features = NULL, img.id.col="Image_ImageNumber_Global"){
   
   # Defining the features 
   if (is.null(features)) {
@@ -939,13 +939,13 @@ tglow.correct <- function(dataset, assay = "cells", to.correct = "plate_id", ass
   cur.cells <- na.omit(dataset[[assay]][, features])
   
   # Make a basic dataframe with our variable to correct (z) for the function [so we do z ~ f]
-  if(to.correct %in% colnames(dataset$meta)){ # if we want to correct a metadata variable
+  if(all(to.correct %in% colnames(dataset$meta))){ # if we want to correct a metadata variable
     
-    df <- data.frame(z = dataset$meta[dataset[[assay]][[img.id.col]], to.correct])
+    df <- data.frame(dataset$meta[dataset[[assay]][[img.id.col]], to.correct])
     
   } else{ # if we want to correct a feature (i.e: intensity)
     
-    df <- data.frame(z = dataset[[assay]][[to.correct]]) 
+    df <- data.frame(dataset[[assay]][, to.correct]) 
     
   }
   
@@ -966,10 +966,20 @@ tglow.correct <- function(dataset, assay = "cells", to.correct = "plate_id", ass
     data$y <- cur.cells[, y]
     
     # Run the linear models
-    l1 <- lm(y ~ z, data = data)
-    
+    l1 <- lm(y ~ ., data = data)
     feature <- colnames(cur.cells)[y]
-    residuals[[feature]] <- residuals(l1)
+
+    if (!is.null(residual.skip.cols)) {
+
+      # Calculate residuals, skipping the effects of a covariate
+      coef <- l1$coefficients
+      residual.keep.cols   <- to.correct[!to.correct %in% residual.skip.cols]
+      residuals[[feature]] <- data$y - (coef["(Intercept)"] + as.matrix(data[,residual.keep.cols]) %*% coef[residual.keep.cols])
+
+    } else {
+      residuals[[feature]] <- residuals(l1)
+    }
+
     
   }
   
