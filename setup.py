@@ -11,6 +11,7 @@ with open('README.md') as f:
 # Source: https://stackoverflow.com/questions/26900328/install-dependencies-from-setup-py
 lib_folder = os.path.dirname(os.path.realpath(__file__))
 requirement_path = f"{lib_folder}/lib/requirements.txt"
+#requirement_path = f"{lib_folder}/lib/requirements_cellprofiler.txt"
 install_requires = []
 
 if os.path.isfile(requirement_path):
