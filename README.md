@@ -2,8 +2,7 @@
 
 Core repo for the python component of the tglow HCI analysis pipeline.
 
-<br>
-<br>
+
 
 # Install instructions
 
@@ -22,18 +21,16 @@ Check core/lib/requirements_cellprofiler.txt for the cellprofiler enviroment
 
 ### tglow enviroment
 
-Dependencies (check core/lib/requirements.txt)
+High level dependencies (check core/lib/requirements.txt for python dependencies installed during package install)
 - python 3.10
-- cellpose 3
 - cuda 12
 - pytorch (gpu enabled)
-- basicpy
-- pystackreg
-- AICSImageio
-- numpy
-- skimage
-- matplotlib
-- scipy
+- opencl (should be installed with RedLionFish and clij2-fft, but your milage may vary)
+- pyopencl (should be installed with RedLionFish and clij2-fft, but your milage may vary)
+
+These are in requirements.txt, but might need some fiddling to get to work on GPU
+- clij2-fft (https://pypi.org/project/clij2-fft/, https://github.com/clij/clij2-fft)
+- RedLionFish (https://pypi.org/project/RedLionfish/)
 
 Create a new conda enviroment
 
@@ -47,32 +44,19 @@ Clone the repo into a suitable install dir, then:
 ```
 git clone https://gitlab.internal.sanger.ac.uk/TrynkaLab/tglow-core
 cd tglow-core/core
-pip install .
+pip install -e .
 ```
 
 To enable GPU install the GPU version of pytorch, following their instructions. I had more luck with the pip install
-then the conda version.
+then the conda version. This is required if you want to run deconvolution using CLIJ2. 
 
-IF you want to be able to edit the python package without the need to re-install, install with:
-
-```
-pip install -e .
-```
-Keep track of the install path of the conda enviroment, as this will need to be provided to nextflow
-
+Keep track of the install path of the conda enviroment, and the path of the `</path/to/this-repo>/runners` as this will need to be provided to nextflow.
 
 ### Cellprofiler env
 
-Dependencies (check requirements_cellprofiler.txt)
+High level dependencies (check requirements_cellprofiler.txt for python dependencies installed during package install)
 - python 3.8
 - cellprofiler
-- cellpose 2 (used as a cp plugin for brightfield images, at this time cellpose 3 doesn't work)
-- tiffifle
-- pystackreg 
-- numpy
-- skimage
-- matplotlib
-
 
 Deactivate the previous conda environments (twice to make sure)
 ```
@@ -95,9 +79,15 @@ requirement_path = f"{lib_folder}/lib/requirements_cellprofiler.txt"
 ```
 then run:
 ```
-pip install ./
+pip install -e ./
 ```
-Keep track of the install paths of the conda enviroments, as this will need to be provided to nextflow
+
+Then install cellprofiler using the pip install provided instructions:
+https://github.com/CellProfiler/CellProfiler/wiki/Source-installation-(Linux)
+
+
+Keep track of the install paths of the conda enviroments, as this will need to be provided to nextflow.
+
 
 
 

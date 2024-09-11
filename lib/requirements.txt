@@ -9,3 +9,5 @@ scipy<1.13
 setuptools==69.2.0
 scikit-image==0.20.0
 tifffile==2022.4.8
+clij2-fft
+redlionfish
