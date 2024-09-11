@@ -1,7 +1,6 @@
 # Tglow: Core python component of tglow imaging pipeline.
 
-Core repo for the python component of the tglow HCI analysis pipeline.
-
+Core package for the python component of the tglow HCI analysis pipeline.
 
 
 # Install instructions
