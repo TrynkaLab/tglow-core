@@ -17,7 +17,7 @@ Due to conflicting versions we need two enviroments, one for the core tglow pipe
 Check core/lib/requirements.txt for the dependencies for the tglow enviroment (this is installed by default)
 Check core/lib/requirements_cellprofiler.txt for the cellprofiler enviroment 
 
-### tglow enviroment
+### Environment 1: tglow enviroment
 
 High level dependencies (check core/lib/requirements.txt for python dependencies installed during package install)
 - python 3.10
@@ -45,12 +45,13 @@ cd tglow-core
 pip install -e .
 ```
 
-To enable GPU install the GPU version of pytorch, following their instructions. I had more luck with the pip install
-then the conda version. This is required if you want to run deconvolution using CLIJ2. 
+To enable GPU install the GPU version of pytorch (https://pytorch.org/get-started/locally/), following their instructions. 
+I had more luck with the pip install then the conda version. This is required if you want to run deconvolution using CLIJ2
+RedLionFish or use Cellpose with GPU. 
 
 Keep track of the install path of the conda enviroment, as this will need to be provided to nextflow.
 
-### Cellprofiler env
+### Environment 2: Cellprofiler env
 
 High level dependencies (check requirements_cellprofiler.txt for python dependencies installed during package install)
 - python 3.8
