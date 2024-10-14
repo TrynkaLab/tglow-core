@@ -54,7 +54,7 @@ Keep track of the install path of the conda enviroment, as this will need to be 
 ### Environment 2: Cellprofiler env
 
 High level dependencies (check requirements_cellprofiler.txt for python dependencies installed during package install)
-- python 3.8
+- python 3.9
 - cellprofiler
 
 Deactivate the previous conda environments (twice to make sure)
@@ -64,7 +64,7 @@ conda deactivate
 ```
 Create the cellprofiler environment:
 ```
-conda create -n cellprofiler python==3.8
+conda create -n cellprofiler python==3.9
 ```
 open core/setup.py and edit the following line:
 
