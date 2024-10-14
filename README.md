@@ -4,16 +4,16 @@ Core package for the python component of the tglow HCI analysis pipeline.
 
 # Install instructions
 
-Discalimer, this is not written to be very portable at the moment as it is using conda as package manager, and uses some configurable paths for custom scripts. Will try to containerize this at some point. Also the GPU installations might require some manual configuring within conda to get them to wrok.
+Discalimer, this is not written to be very portable at the moment as it is using conda as package manager, and uses some configurable paths for custom scripts. Will try to containerize this at some point. Also the GPU installations might require some manual configuring within conda to get them to work.
 
 ## High level dependencies
 
 - Nextflow
 - Conda
 
-On farm22 can load through module system 
+On farm22 these can be loaded through the module system.
 
-Due to conflicting versions we need two enviroments, one for the core tglow pipeline and one for cellprofiler
+Due to conflicting versions we need two environments, one for the core tglow pipeline and one for cellprofiler
 Check core/lib/requirements.txt for the dependencies for the tglow enviroment (this is installed by default)
 Check core/lib/requirements_cellprofiler.txt for the cellprofiler enviroment 
 
@@ -49,7 +49,7 @@ To enable GPU install the GPU version of pytorch (https://pytorch.org/get-starte
 I had more luck with the pip install then the conda version. This is required if you want to run deconvolution using CLIJ2
 RedLionFish or use Cellpose with GPU. 
 
-Keep track of the install path of the conda enviroment, as this will need to be provided to nextflow.
+Keep track of the install path of the conda environment, as this will need to be provided to nextflow.
 
 ### Environment 2: Cellprofiler env
 
