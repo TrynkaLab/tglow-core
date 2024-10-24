@@ -421,9 +421,7 @@ class BlacklistReader():
                     combined_string = separator.join(row[:2])
                     result.append(combined_string)
         return result
-
-
-        
+       
 class AICSImageWriter():
     """Writes image data from ome tiffs in a folder structure /plate/row/col/field.ome.tiff where field.ome.tiff is a CZYX array"""
     
@@ -431,9 +429,10 @@ class AICSImageWriter():
         self.path = path
         self.channel_names=channel_names
         self.physical_pixel_sizes=physical_pixel_sizes
+        self.image_stats_buffer = {}
         
     
-    def write_stack(self, stack, query, channel_names=None, physical_pixel_sizes=None, image_names=None):
+    def write_stack(self, stack, query, channel_names=None, physical_pixel_sizes=None, image_names=None, stats_only=False):
         """Write a CZYX array into the folder structure"""
 
         if not isinstance(query, ImageQuery):
@@ -464,11 +463,38 @@ class AICSImageWriter():
         log.debug(f"imn: {image_names}")
         log.debug(f"shp: {stack.shape}")
 
+        self.image_stats_buffer[query.field] = {}
+        
+        for channel in range(stack.shape[0]):
+            tmp = np.percentile(stack[channel],[0, 0.1, 1, 5, 25, 5, 75, 95, 99, 99.9, 100]).tolist()
+            tmp.append(np.mean(stack[channel]))
+            
+            self.image_stats_buffer[f"{query.field}"][channel] = tmp
 
-        OmeTiffWriter.save(stack,
-         f"{outdir}/{query.field}.ome.tiff",
-          dim_order="CZYX",
-          channel_names=channel_names,
-          physical_pixel_sizes=physical_pixel_sizes,
-          image_names=image_names
-          )
+        if not stats_only:
+            OmeTiffWriter.save(stack,
+            f"{outdir}/{query.field}.ome.tiff",
+            dim_order="CZYX",
+            channel_names=channel_names,
+            physical_pixel_sizes=physical_pixel_sizes,
+            image_names=image_names
+            )
+
+    def write_image_stats(self, query):
+        
+        outdir = f"{self.path}/{query.plate}/{ImageQuery.ID_TO_ROW[query.row]}/{query.col}"
+        info_file=open(f"{outdir}/intensity_stats.tsv", 'w')
+        
+        info_file.write(f"plate\trow\tcol\timage\tchannel\tq0\tq0.1\tq1\tq5\tq25\tq50\tq75\tq95\tq99\tq99.9\tq100\tmean\n")
+
+        for field in self.image_stats_buffer:
+            for channel in self.image_stats_buffer[field]:
+                cur_line = "\t".join([str(num) for num in self.image_stats_buffer[field][channel]])
+                info_file.write(f"{query.plate}\t{ImageQuery.ID_TO_ROW[query.row]}\t{query.col}\t{field}\t{channel}\t{cur_line}\n")
+
+        info_file.flush()
+        info_file.close()
+        
+        # Reset the buffer
+        self.image_stats_buffer = {}
+        
