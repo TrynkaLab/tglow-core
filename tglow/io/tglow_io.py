@@ -421,6 +421,26 @@ class BlacklistReader():
                     combined_string = separator.join(row[:2])
                     result.append(combined_string)
         return result
+    
+    # Read blacklist file as plate/row/col
+    def read_blacklist_as_prc(self, separator="/"):
+       # jm52_20231101_CellDivider_Batch1_Day3	F08
+       
+        result = []
+        with open(self.path, 'r') as file:
+            reader = csv.reader(file, delimiter=self.sep)
+            i = 0 
+            for cur_row in reader:
+                if i > 0:
+                    if len(cur_row) >= 2:
+                        #combined_string = separator.join(row[:2])
+                        #result.append(combined_string)
+                        row, col = ImageQuery.well_id_to_index(cur_row[1])
+                        combined_string = f"{cur_row[0]}{separator}{ImageQuery.ID_TO_ROW[str(row)]}{separator}{str(col)}"
+                        result.append(combined_string)  
+                i = i +1
+        return result
+
        
 class AICSImageWriter():
     """Writes image data from ome tiffs in a folder structure /plate/row/col/field.ome.tiff where field.ome.tiff is a CZYX array"""
