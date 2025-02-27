@@ -11,3 +11,5 @@ tglow/cellprofiler/.DS_Store
 **.nextflow.log*
 **/psfs
 tglow.code-workspace
+testing.py
+**/dev_testing
