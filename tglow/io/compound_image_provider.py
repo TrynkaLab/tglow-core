@@ -94,14 +94,11 @@ class CompoundImageProvider():
         total_imgs = 0
         
         if self.pseudoreplicates > 0:
-            log.info(f"Pseudoreplicating {self.pseudoreplicates} compound images from {self.nimg} read images, with each compound image consisting of {self.merge_n} images")
-            sample_n = 1
-        else:
-            sample_n = self.merge_n
-        
+            log.warning("Pseudoreplicating not supported for fetching average image, option is ignored")
+
         while i < self.nimg:
             i=i+1
-            for final_img in self.__fetch_compound(sample_n):
+            for final_img in self.__fetch_compound(self.merge_n):
                 if rescale:
                     final_img = final_img.astype(np.float32) 
                     final_img = final_img / self.max_value
@@ -144,7 +141,7 @@ class CompoundImageProvider():
             training_imgs_tmp.append(self.__fetch_image(q))
             j += 1
                         
-        log.debug(f"Read {len(training_imgs_tmp)} stacks of {training_imgs_tmp[j-1].shape} into array")
+        #log.debug(f"Read {len(training_imgs_tmp)} stacks of {training_imgs_tmp[j-1].shape} into array")
         
         if self.merge_n > 1:
             final_output.append(np.max(np.array(training_imgs_tmp), axis=0))
