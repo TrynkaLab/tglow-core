@@ -15,6 +15,7 @@ import os
 import re
 import json
 import logging
+import numpy as np
 import argparse
 from xml.etree import ElementTree as ET
 from tglow.io.image_query import ImageQuery
@@ -264,6 +265,77 @@ class PerkinElmerParser(object):
             }
             self.wells.append(w)
         log.info(f" └ Wells: {len(self.wells)}")
+
+    # Parially sourced from
+    # https://github.com/arronsullivan/Operetta_FFC/blob/master/FFC_v1.ipynb
+    def parse_flatfields(self, use_background=False):
+        items = self.xml.findall("./PE:Maps/PE:Map/PE:Entry", self.NS)
+        self.flatfields = {}
+        for e in items:
+            ffps = e.findall('./PE:FlatfieldProfile', self.NS)
+            if (len(ffps) > 0):
+                for ffp in ffps:
+                    log.info(f"Parsing flatfield for channel {e.attrib['ChannelID']}")                    
+                    if use_background:
+                        background = re.search("Background: {(.*)}.*, Foreground:", ffp.text)
+                        if background:
+                            tmp_profile=background.group(1)
+                        else:
+                            log.warning(f"No background profile found for channel { e.attrib['ChannelID']}, skipping")
+                            continue
+                    else:
+                        foreground = re.search("Background: {.*}.*, Foreground: {(.*)}", ffp.text)
+                            
+                        if foreground:
+                            tmp_profile=foreground.group(1)
+                        else:
+                            log.warning(f"No foreground profile found for channel { e.attrib['ChannelID']}, skipping")
+                            continue
+                    
+                    type = re.search(r'Character: (\w+), .*Profile:', tmp_profile).group(1)
+            
+                    if type != 'NonFlat':
+                        log.warning("Flatfield must be 'NonFlat', skipping")
+                        continue
+                    
+                    coeffs_text = re.search(r'Coefficients: \[\[(.*?)\]\]', tmp_profile).group(1)
+                    coeffs = np.array([list(map(float, row.split(','))) for row in coeffs_text.split('], [')], dtype=object)
+                    origin = tuple(map(float, re.search(r'Origin: \[(.*?)\]', tmp_profile).group(1).split(', ')))
+                    scale = tuple(map(float, re.search(r'Scale: \[(.*?)\]', tmp_profile).group(1).split(', ')))            
+                    dims = tuple(map(int, re.search(r'Dims: \[(.*?)\]', tmp_profile).group(1).split(', ')))  # Add this line
+                    
+                    profile = {
+                        "id": e.attrib['ChannelID'],
+                        'coefficients': coeffs,
+                        'origin': origin,
+                        'scale': scale,
+                        'dims': dims 
+                    }
+                    
+                    flatfield = self.reconstruct_flatfield_image(profile)
+                    
+                    profile["flatfield"] = flatfield
+                    self.flatfields[e.attrib['ChannelID']] = profile
+                
+                    
+    # Parially sourced from
+    # https://github.com/arronsullivan/Operetta_FFC/blob/master/FFC_v1.ipynb
+    def reconstruct_flatfield_image(self, channel_data):
+        coeffs, origin,  = channel_data['coefficients'], channel_data['origin']
+        scale, img_shape = channel_data['scale'], channel_data['dims']
+        yv, xv = np.meshgrid(np.arange(img_shape[0]), np.arange(img_shape[1]), indexing='ij')
+        xv = (xv - origin[0]) * scale[0]
+        yv = (yv - origin[1]) * scale[1]
+
+        flatfield_image = np.zeros(img_shape)
+        for row in coeffs:
+            for j, coeff in enumerate(row):
+                # Coefficients in the X order, eg for 3rd degree polynomial:
+                # x^3, y·x^2, x·y^2, y^3
+                flatfield_image += coeff * (xv ** (len(row)-1-j)) * (yv ** j)
+        return flatfield_image
+
+
 
     def save(self, output_path):
 
