@@ -268,10 +268,15 @@ class PerkinElmerParser(object):
 
     # Parially sourced from
     # https://github.com/arronsullivan/Operetta_FFC/blob/master/FFC_v1.ipynb
-    def parse_flatfields(self, use_background=False):
+    def parse_flatfields(self, use_background=False, channel=None):
         items = self.xml.findall("./PE:Maps/PE:Map/PE:Entry", self.NS)
         self.flatfields = {}
         for e in items:
+            
+            if channel is not None:
+                if e.attrib['ChannelID'] != str(channel):
+                    log.info(f"Not parsing flatfield for channel {e.attrib['ChannelID']}")                    
+                    continue
             ffps = e.findall('./PE:FlatfieldProfile', self.NS)
             if (len(ffps) > 0):
                 for ffp in ffps:

@@ -6,6 +6,7 @@ import numpy as np
 from tglow.io.image_query import ImageQuery
 from tglow.io.tglow_io import AICSImageReader, BlacklistReader
 from skimage import data, filters
+from tqdm import tqdm
 
 # Logging
 logging.basicConfig(format='%(asctime)s %(message)s')
@@ -65,10 +66,13 @@ class CompoundImageProvider():
         else:
             sample_n = self.merge_n
         
+        pb = tqdm(total=self.nimg, desc='Reading', unit='image')
         while i < self.nimg:
             i=i+1
             training_imgs_tmp.extend(self.__fetch_compound(sample_n))
-            log.info(f"[{i}/{self.nimg}]")
+            pb.update(1)
+            #log.info(f"[{i}/{self.nimg}]")
+        pb.close()
 
         log.info(f"Reading took { round(((time.time() - start_time)/60), 2)} minutes, read {len(training_imgs_tmp)} images")
         
@@ -96,6 +100,7 @@ class CompoundImageProvider():
         if self.pseudoreplicates > 0:
             log.warning("Pseudoreplicating not supported for fetching average image, option is ignored")
 
+        pb = tqdm(total=self.nimg, desc='Reading', unit='image')
         while i < self.nimg:
             i=i+1
             for final_img in self.__fetch_compound(self.merge_n):
@@ -114,9 +119,10 @@ class CompoundImageProvider():
                     sum_mask += (final_img > thresh)
                     
                 total_imgs += 1
-                
-            log.info(f"[{i}/{self.nimg}]")
-
+            pb.update(1)
+            #log.info(f"[{i}/{self.nimg}]")
+            
+        pb.close()
         if threshold:
             avg_image = sum_image / sum_mask
         else:
