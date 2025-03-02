@@ -5,6 +5,8 @@ import numpy as np
 
 from tglow.io.image_query import ImageQuery
 from tglow.io.tglow_io import AICSImageReader, BlacklistReader
+from tglow.utils.tglow_utils import float_to_16bit_unint_scaled, float_to_16bit_unint
+
 from skimage import data, filters
 from tqdm import tqdm
 
@@ -90,9 +92,10 @@ class CompoundImageProvider():
             
         return training_imgs
         
-    def fetch_average_image(self, rescale=True, threshold=True):
+    def fetch_compound_image_mean_max(self, max_project=False):
         sum_image=None
         sum_mask=None
+        max_image=None
         i=0
         start_time = time.time()
         total_imgs = 0
@@ -104,31 +107,38 @@ class CompoundImageProvider():
         while i < self.nimg:
             i=i+1
             for final_img in self.__fetch_compound(self.merge_n):
-                if rescale:
-                    final_img = final_img.astype(np.float32) 
-                    final_img = final_img / self.max_value
+                #if rescale:
+                #    final_img = final_img.astype(np.float32) 
+                #    final_img = final_img / self.max_value
                     
                 if sum_image is None:
                     sum_image = np.zeros_like(final_img, dtype=np.float32)
                     sum_mask = np.ones_like(final_img, dtype=np.float32)
+                    max_image = np.zeros_like(final_img, dtype=np.float32)
 
                 sum_image = sum_image + final_img
+                
+                max_image[final_img > max_image] = final_img[final_img > max_image]
                     
-                if threshold:
-                    thresh = filters.threshold_otsu(final_img)
-                    sum_mask += (final_img > thresh)
+                #if threshold:
+                #    thresh = filters.threshold_otsu(final_img)
+                #    sum_mask += (final_img > thresh)
                     
                 total_imgs += 1
             pb.update(1)
             #log.info(f"[{i}/{self.nimg}]")
             
         pb.close()
-        if threshold:
-            avg_image = sum_image / sum_mask
+        #if threshold:
+        #    avg_image = sum_image / sum_mask
+        #else:
+        avg_image = sum_image / self.nimg
+        log.info(f"Reading took { round(((time.time() - start_time)/60), 2)} minutes")
+        
+        if max_project:  
+            return(max_image)
         else:
-            avg_image = sum_image / self.nimg
-        log.info(f"Reading took { round(((time.time() - start_time)/60), 2)} minutes")  
-        return(avg_image)
+            return(avg_image)
 
     def __fetch_compound(self, sample_n):
         
@@ -151,8 +161,14 @@ class CompoundImageProvider():
         
         if self.merge_n > 1:
             final_output.append(np.max(np.array(training_imgs_tmp), axis=0))
+            # Mean projection
+            #mean_tmp = np.mean(np.array(training_imgs_tmp), axis=0)
+            #mean_tmp[mean_tmp < 0] = 0
+            #mean_tmp = float_to_16bit_unint(mean_tmp)
+            #final_output.append(mean_tmp)
         else:
-            final_output.extend(training_imgs_tmp)
+            #final_output.extend(training_imgs_tmp)
+            final_output = training_imgs_tmp
                     
         return(final_output)
 
