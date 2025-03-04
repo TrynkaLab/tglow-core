@@ -154,7 +154,7 @@ class CompoundImageProvider():
         while j < len(merge_files): 
             q = merge_files[j]
             q.channel = self.channel
-            training_imgs_tmp.append(self.__fetch_image(q))
+            training_imgs_tmp.append(self.fetch_image(q))
             j += 1
                         
         #log.debug(f"Read {len(training_imgs_tmp)} stacks of {training_imgs_tmp[j-1].shape} into array")
@@ -172,7 +172,7 @@ class CompoundImageProvider():
                     
         return(final_output)
 
-    def __fetch_image(self, q):
+    def fetch_image(self, q):
             
             if self.all_planes:
                 img = self.ac_reader.read_image(q)

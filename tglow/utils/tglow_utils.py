@@ -5,6 +5,8 @@ import json
 import string
 import collections
 import struct
+from skimage import transform
+
 
 # Encode numpy formats as JSON
 class NpEncoder(json.JSONEncoder):
@@ -70,6 +72,8 @@ def get_channel_channel_info(index_xml) -> dict:
             
     return channel_info
 
+
+
 # Build dict linking letters to number
 def build_well_index(upper=True, invert=False, rows_as_string=False) -> dict:
     if (upper):
@@ -91,11 +95,14 @@ def build_well_index(upper=True, invert=False, rows_as_string=False) -> dict:
     
     return(idx)
 
+
+
 # Covert a defualt dict tree to regular dict             
 def default_to_regular(d):
     if isinstance(d, collections.defaultdict):
         d = {k: default_to_regular(v) for k, v in d.items()}
     return d
+
 
 # Convert a numpy 32bit float to a 16 bit int, clip values to zero and 65535
 def float_to_16bit_unint_scaled(matrix, max_value) -> np.array:
@@ -135,6 +142,7 @@ def float_to_16bit_unint(matrix) -> np.array:
     
     return matrix
 
+
 # Convert a numpy 32bit float to a 32 bit int, clip values to  max
 def float_to_32bit_unint(matrix) -> np.array:
 
@@ -150,6 +158,7 @@ def float_to_32bit_unint(matrix) -> np.array:
     matrix = matrix.astype(np.uint32)
     
     return matrix
+
 
 # Convert a dict to a string for printing
 def dict_to_str(dict):
@@ -178,3 +187,30 @@ def write_bin(matrix, file):
         binfile.write(data)
     binfile.close()
     
+
+# Apply 2d registration 
+def apply_registration(self, stack, alignment_matrix):
+        
+    # Apply transformation matrix
+    tform = transform.AffineTransform(matrix=alignment_matrix)
+
+    # If the stack is 2d YX
+    if len(stack.shape) == 2:
+        # transform image using the saved transformation matrix
+        stack = transform.warp(stack, tform, preserve_range=True, order=0)
+        
+    # If the stack is 3d CYX or ZYX
+    elif len(stack.shape) == 3:
+        
+        for i in range(0, stack.shape[0]):
+            #log.debug(f"Aligning stack of shape {stack[i,:,:].shape}")
+            stack[i,:,:] = transform.warp(stack[i,:,:], tform, preserve_range=True, order=0)
+    
+    # If the stack is CZYX
+    elif len(stack.shape) == 4:
+        for i in range(0, stack.shape[0]):
+            for j in range(0, stack.shape[1]):
+                #log.debug(f"Aligning stack of shape {stack[i,j,:,:].shape}")
+                stack[i,j,:,:] = transform.warp(stack[i,j,:,:], tform, preserve_range=True, order=0)
+    
+    return stack

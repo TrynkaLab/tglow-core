@@ -441,6 +441,68 @@ class BlacklistReader():
                 i = i +1
         return result
 
+
+class ControlRecord():
+    
+    def __init__(self, plate, well, channels, name):
+        self.plate = plate
+        self.well = well
+        self.channels = [int(x) for x in channels]
+        self.name = name
+    
+    def get_row_col(self):
+        row, col = ImageQuery.well_id_to_index(self.well)
+        return row, col
+    
+    def get_rowchar(self):
+        row, col = ImageQuery.well_id_to_index(self.well)
+        return ImageQuery.ID_TO_ROW[str(row)]
+        
+    def get_query(self, field):
+        row, col = self.get_row_col()
+        return ImageQuery(self.plate, row, col, field)
+    
+
+class ControllistReader():
+    
+    def __init__(self, path, plates_filter=None, blacklist=None, sep="\t"):
+        self.path=path
+        self.sep=sep
+        self.plates_filter=plates_filter
+        self.blacklist=blacklist
+        
+    def read_controlist(self):
+    
+        nwells_blacklist=0
+        nwells = 0
+        result = []
+        with open(self.path, 'r') as file:
+            reader = csv.reader(file, delimiter=self.sep)
+            for row in reader:
+                
+                # Only read controls for plate
+                if self.plates_filter is not None:
+                    if (row[0] not in self.plates_filter):
+                        continue
+                
+                # Skip blacklisted wells
+                if self.blacklist is not None:
+                    if f"{row[0]}:{row[1]}" in self.blacklist:
+                        nwells_blacklist+=1
+                        continue
+                    
+                # Convert 1 indexed channel list to zero indexed
+                channels = row[2].split(',')                
+                channels = [int(x)-1 for x in channels]
+                
+                result.append(ControlRecord(row[0], row[1], channels, row[3]))
+                nwells+=1
+        
+        log.info(f"Read control file with {nwells} and {nwells_blacklist} blacklisted wells")
+        return result
+    
+    
+
        
 class AICSImageWriter():
     """Writes image data from ome tiffs in a folder structure /plate/row/col/field.ome.tiff where field.ome.tiff is a CZYX array"""
