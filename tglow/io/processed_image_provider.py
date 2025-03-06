@@ -16,9 +16,9 @@ log = logging.getLogger(__name__)
 log.setLevel(logging.DEBUG)
 
 
-class ProccessedImageProvider():
+class ProcessedImageProvider():
         
-    def __init__(self, path, blacklist=None, plate=None, plate_merge=None, registration_dir=None, flatfields=None, scaling_factors=None, mask_channels=None, mask_dir=None, mask_pattern=None, unint32=False):
+    def __init__(self, path, blacklist=None, plate=None, plate_merge=None, registration_dir=None, flatfields=None, scaling_factors=None, mask_channels=None, mask_dir=None, mask_pattern=None, uint32=False, verbose=True):
         
         # Main dir to index
         self.path = path
@@ -34,7 +34,9 @@ class ProccessedImageProvider():
         self.plates=plate
 
         # Save results as uint32 instead of uint16
-        self.uint32=unint32
+        self.uint32=uint32
+        
+        self.verbose=verbose
         
         #---------------------------------------------------------------------
         # Channels for alignment and plates to merge
@@ -86,7 +88,6 @@ class ProccessedImageProvider():
             if mask_dir is not None:
                 self.mask_reader = AICSImageReader(mask_dir,
                                                 self.plates,
-                                                fields_filter=self.fields,
                                                 pattern=mask_pattern)
             else:
                 raise RuntimeError("Must provide --mask_channels and --mask_dir")
@@ -102,16 +103,19 @@ class ProccessedImageProvider():
     
         # Peak at an image for channel dims and names
         img = self.plate_reader.get_img(self.plate_reader.images[self.plates[0]][0])      
-        df = pd.DataFrame(columns=["query_plate", "plate", "cycle", "channel", "name", "orig_channel", "orig_name"])
+        df = pd.DataFrame(columns=["ref_plate", "plate", "cycle", "channel", "name", "orig_channel", "orig_name"])
         
         cycle = 1
         channel_id = 0
-        for channel in range(0, img.dims[0]):
-            df.at[channel, "query_plate"] = self.plates[0]
+        for channel in range(0, img.dims['C'][0]):
+            df.at[channel, "ref_plate"] = self.plates[0]
             df.at[channel, "plate"] = self.plates[0]
             df.at[channel, "channel"] = channel
             df.at[channel, "name"] = img.channel_names[channel]
             df.at[channel, "cycle"] = cycle
+            df.at[channel, "orig_channel"] = channel
+            df.at[channel, "orig_name"] = img.channel_names[channel]
+
             channel_id += 1  
         
         # Add the channel names and IDs in the merged plate
@@ -120,11 +124,11 @@ class ProccessedImageProvider():
                 cycle += 1
                 img = self.plate_reader.get_img(self.plate_reader.images[plate_merge][0])
                 
-                for channel in range(0, img.dims[0]):
-                    df.at[channel_id, "query_plate"] = self.plates[0]
-                    df.at[channel_id, "plate"] = self.plates[0]
+                for channel in range(0, img.dims['C'][0]):
+                    df.at[channel_id, "ref_plate"] = self.plates[0]
+                    df.at[channel_id, "plate"] = plate_merge
                     df.at[channel_id, "channel"] = channel_id
-                    df.at[channel, "name"] = f"ch{channel_id} - {img.channel_names[channel]}"
+                    df.at[channel_id, "name"] = f"ch{channel_id} - {img.channel_names[channel]}"
                     df.at[channel_id, "cycle"] = cycle
                     df.at[channel_id, "orig_channel"] = channel
                     df.at[channel_id, "orig_name"] = img.channel_names[channel]
@@ -133,34 +137,40 @@ class ProccessedImageProvider():
         # If there are channel to mask
         if self.mask_channels is not None:
             for mask_channel in self.mask_channels:
-                    df.at[channel_id, "query_plate"] = df.iloc[mask_channel, "query_plate"]
-                    df.at[channel_id, "plate"] = df.iloc[mask_channel, "plate"]
+                    mask_channel = int(mask_channel)
+                    df.at[channel_id, "ref_plate"] = df.iloc[mask_channel]["ref_plate"]
+                    df.at[channel_id, "plate"] = df.iloc[mask_channel]["plate"]
                     df.at[channel_id, "channel"] = channel_id
-                    df.at[channel, "name"] = f"ch{channel_id} - {df.iloc[mask_channel, "name"]} mask inclusive"
-                    df.at[channel_id, "cycle"] = df.iloc[mask_channel, "cycle"]
-                    df.at[channel_id, "orig_channel"] = df.iloc[mask_channel, "channel"]
-                    df.at[channel_id, "orig_name"] = df.iloc[mask_channel, "channel"]
+                    df.at[channel_id, "name"] = f"ch{channel_id} - {df.iloc[mask_channel]['name']} mask inclusive"
+                    df.at[channel_id, "cycle"] = df.iloc[mask_channel]["cycle"]
+                    df.at[channel_id, "orig_channel"] = df.iloc[mask_channel]["channel"]
+                    df.at[channel_id, "orig_name"] = df.iloc[mask_channel]["name"]
                     channel_id += 1
                 
-                    df.at[channel_id, "query_plate"] = df.iloc[mask_channel, "query_plate"]
-                    df.at[channel_id, "plate"] = df.iloc[mask_channel, "plate"]
+                    df.at[channel_id, "ref_plate"] = df.iloc[mask_channel]["ref_plate"]
+                    df.at[channel_id, "plate"] = df.iloc[mask_channel]["plate"]
                     df.at[channel_id, "channel"] = channel_id
-                    df.at[channel, "name"] = f"ch{channel_id} - {df.iloc[mask_channel, "name"]} mask exclusive"
-                    df.at[channel_id, "cycle"] = df.iloc[mask_channel, "cycle"]
-                    df.at[channel_id, "orig_channel"] = df.iloc[mask_channel, "channel"]
-                    df.at[channel_id, "orig_name"] = df.iloc[mask_channel, "channel"]
+                    df.at[channel_id, "name"] = f"ch{channel_id} - {df.iloc[mask_channel]['name']} mask exclusive"
+                    df.at[channel_id, "cycle"] = df.iloc[mask_channel]["cycle"]
+                    df.at[channel_id, "orig_channel"] = df.iloc[mask_channel]["channel"]
+                    df.at[channel_id, "orig_name"] = df.iloc[mask_channel]["name"]
                     channel_id += 1
 
-        df.index = df["plate"] + "_ch" + df["orig_channel"]
+        df.index = df["plate"] + "_ch" + str(df["orig_channel"])
         self.channel_index = df
-        self.dims = img.dims
-        self.dims['C'][0] = len(self.channel_index)
+        self.dims = {}
+        
+        for k in list(img.dims.order):
+            self.dims[k] = img.dims[k][0]
+
+        self.dims['C'] = len(self.channel_index)
+   
             
     # Fetch a single image 
     def fetch_image(self, iq):
                 
         # Pre allocate a nupy array to avoid creating copies (quite a big speedup)
-        stack = np.zeros((self.dims['C'][0], self.dims['Z'][0], self.dims['Y'][0], self.dims['X'][0]), dtype=np.uint16)
+        stack = np.zeros((self.dims['C'], self.dims['Z'], self.dims['Y'], self.dims['X']), dtype=np.uint16)
         
         # Read data in
         img = self.plate_reader.get_img(iq)
@@ -168,7 +178,8 @@ class ProccessedImageProvider():
         
         # Keep track of the last channel populated
         last_channel = img.dims['C'][0]
-        log.info(f"Read up to channel {last_channel} into image stack of shape {stack.shape}")
+        if self.verbose: log.info(f"Read up to channel {last_channel} into image stack of shape {stack.shape}, {stack.dtype}")
+        #if self.verbose: log.debug(f"Stack dtype {stack.dtype}")
 
         #-------------------------------------------------
         # If plates need to be merged, and or registred do that here
@@ -182,12 +193,13 @@ class ProccessedImageProvider():
                 stack[cur_range,:,:,:] = self.plate_reader.read_image(m_iq)
                 
                 if self.registration_dir is not None:
-                    log.info("Applying registration")
+                    if self.verbose: log.info(f"Applying registration")
                     reg = self.fetch_registration(iq)
-                    stack[cur_range,:,:,:] = apply_registration(stack[cur_range,:,:,:], reg[m_plate])
+                    tmp = apply_registration(stack[cur_range,:,:,:], reg[m_plate])
+                    stack[cur_range,:,:,:] = tmp
                 
                 last_channel = last_channel +  m_dims['C'][0]
-            log.info(f"Read up to channel {last_channel} into image stack of shape {stack.shape}")
+            if self.verbose: log.info(f"Read up to channel {last_channel} into image stack of shape {stack.shape}, {stack.dtype}")
         
         #-------------------------------------------------
         # Apply flatfield corrections
@@ -195,10 +207,10 @@ class ProccessedImageProvider():
             
             for index, row in self.channel_index.iterrows():
                 channel = int(row["channel"])
-                bp_key = f"{row["plate"]}_ch{row["orig_channel"]}"
+                bp_key = f"{row['plate']}_ch{row['orig_channel']}"
                 
                 if str(bp_key) in self.flatfields.keys():
-                    log.info(f"Applying flatfield to: {iq.plate} well: {iq.well} channel: {str(row["channel"])} field: {iq.field}")                    
+                    if self.verbose: log.info(f"Applying flatfield to: {iq.plate} well: {iq.get_well_id()} channel: {str(row['channel'])} field: {iq.field}")                    
                     basic_model = self.flatfields[str(bp_key)]
 
                     if self.uint32:
@@ -206,7 +218,7 @@ class ProccessedImageProvider():
                     else:
                         stack[channel,:,:,:]=float_to_16bit_unint(basic_model.transform(stack[channel,:,:,:]))
                                                     
-            log.info(f"Applied flatfieds to stack of shape {stack.shape}")
+            if self.verbose: log.info(f"Applied flatfieds to stack of shape {stack.shape}, {stack.dtype}")
         
         #-------------------------------------------------
         # Apply masks to the image to demultiplex
@@ -215,7 +227,7 @@ class ProccessedImageProvider():
                 
                 # Read mask and convert to binary
                 mask = self.mask_reader.read_image(iq)
-                log.debug(f"Read mask of shape {mask.shape} with {np.max(mask)} objects.")
+                if self.verbose: log.debug(f"Read mask of shape {mask.shape} with {np.max(mask)} objects.")
                 
                 if (mask.shape[1] != stack.shape[1]):
                     raise RuntimeError(f"Mask and image must have the same dimensions, mask: {mask.shape}, image: {stack.shape}")
@@ -228,7 +240,7 @@ class ProccessedImageProvider():
                 stack[last_channel, :,:,:] = stack[mask_channel,:,:,:] * mask_inv
                 last_channel = last_channel + 1
 
-            log.info(f"Masked channels {self.mask_channels}. Resulting stack {stack.shape}")
+            if self.verbose: log.info(f"Masked channels {self.mask_channels}. Resulting stack {stack.shape}, {stack.dtype}")
     
         #-------------------------------------------------
         # Apply scaling factors
@@ -238,29 +250,30 @@ class ProccessedImageProvider():
             
             for index, row in self.channel_index.iterrows():
                 channel = int(row["channel"])
-                scale_key = f"{row["plate"]}_ch{row["channel"]}"
+                scale_key = f"{row['plate']}_ch{row['channel']}"
                      
                 if str(scale_key) in self.scaling_factors.keys():
                     factor = self.scaling_factors[scale_key]
-                    log.debug(f"Scaling {scale_key} by factor {factor} for {row["plate"]}, ch{channel}")
-                    log.debug(f"Pre-scale min/max {np.min(stack[channel,:,:,:])}/{np.max(stack[channel,:,:,:])} dtype:{stack[channel,:,:,:].dtype}")
+                    if self.verbose: log.debug(f"Scaling {scale_key} by factor {factor} for {row['plate']}, ch{channel}")
+                    if self.verbose: log.debug(f"Pre-scale min/max {np.min(stack[channel,:,:,:])}/{np.max(stack[channel,:,:,:])} dtype:{stack[channel,:,:,:].dtype}")
                     # Divide
                     stack[channel,:,:,:] = stack[channel,:,:,:] / factor
-                    log.debug(f"Post-scale min/max {np.min(stack[channel,:,:,:])}/{np.max(stack[channel,:,:,:])} dtype:{stack[channel,:,:,:].dtype}")
+                    if self.verbose: log.debug(f"Post-scale min/max {np.min(stack[channel,:,:,:])}/{np.max(stack[channel,:,:,:])} dtype:{stack[channel,:,:,:].dtype}")
                 else:
-                    log.warning(f"Scale key {scale_key} not found! NOT APPLYING SCALING FOR: {row["plate"]}, ch{channel}")
+                    if self.verbose: log.warning(f"Scale key {scale_key} not found! NOT APPLYING SCALING FOR: {row['plate']}, ch{channel}")
             
             # Scale back to uint
             if self.uint32:
                 stack=float_to_32bit_unint(stack)
                 for channel in range(0,stack.shape[0]):
-                    log.debug(f"Post clip min/max channel {channel} {np.min(stack[channel,:,:,:])}/{np.max(stack[channel,:,:,:])} dtype:{stack[channel,:,:,:].dtype}")
+                    if self.verbose: log.debug(f"Post clip min/max channel {channel} {np.min(stack[channel,:,:,:])}/{np.max(stack[channel,:,:,:])} dtype:{stack[channel,:,:,:].dtype}")
             else:
                 stack=float_to_16bit_unint(stack)
                 for channel in range(0,stack.shape[0]):
-                    log.debug(f"Post clip min/max channel {channel} {np.min(stack[channel,:,:,:])}/{np.max(stack[channel,:,:,:])} dtype:{stack[channel,:,:,:].dtype}")
+                    if self.verbose: log.debug(f"Post clip min/max channel {channel} {np.min(stack[channel,:,:,:])}/{np.max(stack[channel,:,:,:])} dtype:{stack[channel,:,:,:].dtype}")
         
         return stack
+    
     
     # Fetch the registration matrices for a well as a dict
     def fetch_registration(self, iq) -> dict:
@@ -274,8 +287,12 @@ class ProccessedImageProvider():
             raise RuntimeError(f"Alignment matrix for {pickle_path} does not exist")
 
         return alignment_matrices  
+  
     
-    
+    def get_wells(self):
+        return self.plate_reader.get_wells()
+
+
     def write_channel_index(self, output):
         
         # Write the output

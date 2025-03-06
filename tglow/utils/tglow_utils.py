@@ -5,7 +5,15 @@ import json
 import string
 import collections
 import struct
+import logging
 from skimage import transform
+
+
+# Logging
+logging.basicConfig(format='%(asctime)s %(message)s')
+log = logging.getLogger(__name__)
+log.setLevel(logging.DEBUG)
+
 
 
 # Encode numpy formats as JSON
@@ -72,8 +80,6 @@ def get_channel_channel_info(index_xml) -> dict:
             
     return channel_info
 
-
-
 # Build dict linking letters to number
 def build_well_index(upper=True, invert=False, rows_as_string=False) -> dict:
     if (upper):
@@ -113,12 +119,13 @@ def float_to_16bit_unint_scaled(matrix, max_value) -> np.array:
     # Convert to 16 bit to keep consistency with output
     # Round to nearest int            
     matrix = np.rint((matrix/max_value)*np.iinfo(np.uint16).max)
-    
+    matrix = np.clip(matrix, a_min=0, a_max=np.iinfo(np.uint16).max, out=matrix)
+
     # Set negatives to zero
-    matrix[matrix < 0] = 0
+    #matrix[matrix < 0] = 0
     
     # Clip values at the 16 bit max
-    matrix[matrix > np.iinfo(np.uint16).max] = np.iinfo(np.uint16).max
+    #matrix[matrix > np.iinfo(np.uint16).max] = np.iinfo(np.uint16).max
     
     matrix = matrix.astype(np.uint16)
     
@@ -132,12 +139,23 @@ def float_to_16bit_unint(matrix) -> np.array:
     # Round to nearest int            
     matrix = np.rint(matrix)
     
+    # Set negatives to zero and clip to max
+    matrix = np.clip(matrix, a_min=0, a_max=np.iinfo(np.uint16).max, out=matrix)
     # Set negatives to zero
-    matrix[matrix < 0] = 0
-    
+    #matrix[matrix < 0] = 0
     # Clip values at the 16 bit max
-    matrix[matrix > np.iinfo(np.uint16).max] = np.iinfo(np.uint16).max
+    #matrix[matrix > np.iinfo(np.uint16).max] = np.iinfo(np.uint16).max
     
+    matrix = matrix.astype(np.uint16)
+    
+    return matrix
+
+
+def float_to_16bit_unint_inplace(matrix):
+    matrix = np.rint(matrix, out=matrix)
+    
+    # Set negatives to zero and clip to max
+    matrix = np.clip(matrix, a_min=0, a_max=np.iinfo(np.uint16).max, out=matrix)
     matrix = matrix.astype(np.uint16)
     
     return matrix
@@ -149,11 +167,11 @@ def float_to_32bit_unint(matrix) -> np.array:
     # Round to nearest int            
     matrix = np.rint(matrix)
     
+    matrix = np.clip(matrix, a_min=0, a_max=np.iinfo(np.uint32).max, out=matrix)
     # Set negatives to zero
-    matrix[matrix < 0] = 0
-    
+    #matrix[matrix < 0] = 0
     # Clip values at the 32 bit max
-    matrix[matrix > np.iinfo(np.uint32).max] = np.iinfo(np.uint32).max
+    #matrix[matrix > np.iinfo(np.uint32).max] = np.iinfo(np.uint32).max
     
     matrix = matrix.astype(np.uint32)
     
@@ -189,7 +207,7 @@ def write_bin(matrix, file):
     
 
 # Apply 2d registration 
-def apply_registration(self, stack, alignment_matrix):
+def apply_registration(stack, alignment_matrix):
         
     # Apply transformation matrix
     tform = transform.AffineTransform(matrix=alignment_matrix)
