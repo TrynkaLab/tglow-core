@@ -469,7 +469,11 @@ class ControllistReader():
         self.path=path
         self.sep=sep
         self.plates_filter=plates_filter
-        self.blacklist=blacklist
+        
+        if blacklist is not None:
+            self.blacklist = BlacklistReader(blacklist).read_blacklist()
+        else:
+            self.blacklist=[]
         
     def read_controlist(self):
     
