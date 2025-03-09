@@ -376,13 +376,13 @@ class AICSImageReader():
 
         if (query.channel is None) and (query.plane is None):
             # returns 4D CZYX numpy array
-            #return img.get_image_data("CZYX", T=0)
-            return img.get_image_dask_data("CZYX", T=0).compute()
+            return img.get_image_data("CZYX", T=0)
+            #return img.get_image_dask_data("CZYX", T=0).compute()
 
         if (query.channel is not None) and (query.plane is None):
             # returns 3D ZYX numpy array
-            #return img.get_image_data("ZYX", T=0, C=int(query.channel))
-            return img.get_image_dask_data("ZYX", T=0, C=int(query.channel)).compute()
+            return img.get_image_data("ZYX", T=0, C=int(query.channel))
+            #return img.get_image_dask_data("ZYX", T=0, C=int(query.channel)).compute()
 
         if (query.channel is None) and (query.plane is not None):
             # returns 3D CYX numpy array
@@ -391,8 +391,8 @@ class AICSImageReader():
 
         if (query.channel is not None) and (query.plane is not None):
             # returns 2D YX numpy array
-            #return img.get_image_data("YX", T=0, Z=int(query.plane), C=int(query.channel))
-            return img.get_image_dask_data("YX", T=0, Z=int(query.plane), C=int(query.channel)).compute()
+            return img.get_image_data("YX", T=0, Z=int(query.plane), C=int(query.channel))
+            #return img.get_image_dask_data("YX", T=0, Z=int(query.plane), C=int(query.channel)).compute()
 
     def read_stack(self, query) -> np.ndarray:
         """Read an image stack into a CZYX array"""

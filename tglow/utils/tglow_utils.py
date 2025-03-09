@@ -215,20 +215,23 @@ def apply_registration(stack, alignment_matrix):
     # If the stack is 2d YX
     if len(stack.shape) == 2:
         # transform image using the saved transformation matrix
-        stack = transform.warp(stack, tform, preserve_range=True, order=0)
+        #, preserve_range=True,
+        stack = transform.warp(stack, tform, order=0, preserve_range=True)
         
     # If the stack is 3d CYX or ZYX
     elif len(stack.shape) == 3:
         
         for i in range(0, stack.shape[0]):
             #log.debug(f"Aligning stack of shape {stack[i,:,:].shape}")
-            stack[i,:,:] = transform.warp(stack[i,:,:], tform, preserve_range=True, order=0)
+            #, preserve_range=True,
+            stack[i,:,:] = transform.warp(stack[i,:,:], tform, order=0, preserve_range=True)
     
     # If the stack is CZYX
     elif len(stack.shape) == 4:
         for i in range(0, stack.shape[0]):
             for j in range(0, stack.shape[1]):
                 #log.debug(f"Aligning stack of shape {stack[i,j,:,:].shape}")
-                stack[i,j,:,:] = transform.warp(stack[i,j,:,:], tform, preserve_range=True, order=0)
+                #, preserve_range=True,
+                stack[i,j,:,:] = transform.warp(stack[i,j,:,:], tform, order=0, preserve_range=True)
     
     return stack

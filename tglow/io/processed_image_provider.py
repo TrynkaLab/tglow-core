@@ -18,7 +18,7 @@ log.setLevel(logging.DEBUG)
 
 class ProcessedImageProvider():
         
-    def __init__(self, path, blacklist=None, plate=None, plate_merge=None, registration_dir=None, flatfields=None, scaling_factors=None, mask_channels=None, mask_dir=None, mask_pattern=None, uint32=False, verbose=True):
+    def __init__(self, path, plate, blacklist=None, plate_merge=None, registration_dir=None, flatfields=None, scaling_factors=None, mask_channels=None, mask_dir=None, mask_pattern=None, uint32=False, verbose=True):
         
         # Main dir to index
         self.path = path
@@ -65,9 +65,12 @@ class ProcessedImageProvider():
             self.flatfields={}
             for val in flatfields:
                 keypair = val.split("=")
-                log.info(f"Adding basicpy model: {keypair}")
-                self.flatfields[keypair[0]] = BaSiC.load_model(keypair[1])
-                
+
+                for curp in self.plates + self.plates_merge:
+                    if curp in keypair[0]:
+                        log.info(f"Adding basicpy model: {keypair}")
+                        self.flatfields[keypair[0]] = BaSiC.load_model(keypair[1])
+                    
         #--------------------------------------------------------------------- 
         # Build dict with scaling factors
         if scaling_factors == None:
@@ -76,15 +79,28 @@ class ProcessedImageProvider():
             self.scaling_factors={}
             for val in scaling_factors:
                 keypair = val.split("=")
-                log.info(f"Adding scaling factors: {keypair}")
-                self.scaling_factors[keypair[0]] = float(keypair[1])
+                
+                for curp in self.plates + self.plates_merge:
+                    if curp in keypair[0]:
+                        log.info(f"Adding scaling factors: {keypair}")
+                        self.scaling_factors[keypair[0]] = float(keypair[1])
 
         #---------------------------------------------------------------------
         # Optional demultiplexing
         self.mask_channels=None
         if mask_channels is not None:
-            self.mask_channels = [int(c) for c in mask_channels]
-        
+            
+            # Old way, not per plate
+            #self.mask_channels = [int(c) for c in mask_channels]
+            self.mask_channels = {}
+            
+            for val in mask_channels:
+                keypair = val.split("=")
+                log.info(f"Adding channel mask {keypair}")
+                if keypair[0] not in self.mask_channels:
+                    self.mask_channels[keypair[0]]=set()
+                self.mask_channels[keypair[0]].add(int(keypair[1]))    
+                
             if mask_dir is not None:
                 self.mask_reader = AICSImageReader(mask_dir,
                                                 self.plates,
@@ -136,25 +152,26 @@ class ProcessedImageProvider():
                     
         # If there are channel to mask
         if self.mask_channels is not None:
-            for mask_channel in self.mask_channels:
-                    mask_channel = int(mask_channel)
-                    df.at[channel_id, "ref_plate"] = df.iloc[mask_channel]["ref_plate"]
-                    df.at[channel_id, "plate"] = df.iloc[mask_channel]["plate"]
-                    df.at[channel_id, "channel"] = channel_id
-                    df.at[channel_id, "name"] = f"ch{channel_id} - {df.iloc[mask_channel]['name']} mask inclusive"
-                    df.at[channel_id, "cycle"] = df.iloc[mask_channel]["cycle"]
-                    df.at[channel_id, "orig_channel"] = df.iloc[mask_channel]["channel"]
-                    df.at[channel_id, "orig_name"] = df.iloc[mask_channel]["name"]
-                    channel_id += 1
-                
-                    df.at[channel_id, "ref_plate"] = df.iloc[mask_channel]["ref_plate"]
-                    df.at[channel_id, "plate"] = df.iloc[mask_channel]["plate"]
-                    df.at[channel_id, "channel"] = channel_id
-                    df.at[channel_id, "name"] = f"ch{channel_id} - {df.iloc[mask_channel]['name']} mask exclusive"
-                    df.at[channel_id, "cycle"] = df.iloc[mask_channel]["cycle"]
-                    df.at[channel_id, "orig_channel"] = df.iloc[mask_channel]["channel"]
-                    df.at[channel_id, "orig_name"] = df.iloc[mask_channel]["name"]
-                    channel_id += 1
+            if self.plates[0] in self.mask_channels:
+                for mask_channel in self.mask_channels[self.plates[0]]:
+                        mask_channel = int(mask_channel)
+                        df.at[channel_id, "ref_plate"] = df.iloc[mask_channel]["ref_plate"]
+                        df.at[channel_id, "plate"] = df.iloc[mask_channel]["plate"]
+                        df.at[channel_id, "channel"] = channel_id
+                        df.at[channel_id, "name"] = f"ch{channel_id} - {df.iloc[mask_channel]['name']} mask inclusive"
+                        df.at[channel_id, "cycle"] = df.iloc[mask_channel]["cycle"]
+                        df.at[channel_id, "orig_channel"] = df.iloc[mask_channel]["channel"]
+                        df.at[channel_id, "orig_name"] = df.iloc[mask_channel]["name"]
+                        channel_id += 1
+                    
+                        df.at[channel_id, "ref_plate"] = df.iloc[mask_channel]["ref_plate"]
+                        df.at[channel_id, "plate"] = df.iloc[mask_channel]["plate"]
+                        df.at[channel_id, "channel"] = channel_id
+                        df.at[channel_id, "name"] = f"ch{channel_id} - {df.iloc[mask_channel]['name']} mask exclusive"
+                        df.at[channel_id, "cycle"] = df.iloc[mask_channel]["cycle"]
+                        df.at[channel_id, "orig_channel"] = df.iloc[mask_channel]["channel"]
+                        df.at[channel_id, "orig_name"] = df.iloc[mask_channel]["name"]
+                        channel_id += 1
 
         df.index = df["plate"] + "_ch" + str(df["orig_channel"])
         self.channel_index = df
@@ -170,7 +187,8 @@ class ProcessedImageProvider():
     def fetch_image(self, iq):
                 
         # Pre allocate a nupy array to avoid creating copies (quite a big speedup)
-        stack = np.zeros((self.dims['C'], self.dims['Z'], self.dims['Y'], self.dims['X']), dtype=np.uint16)
+        # Updated to init at float32 straight away, and only coverting back at the end
+        stack = np.zeros((self.dims['C'], self.dims['Z'], self.dims['Y'], self.dims['X']), dtype=np.float32)
         
         # Read data in
         img = self.plate_reader.get_img(iq)
@@ -195,11 +213,15 @@ class ProcessedImageProvider():
                 if self.registration_dir is not None:
                     if self.verbose: log.info(f"Applying registration")
                     reg = self.fetch_registration(iq)
-                    tmp = apply_registration(stack[cur_range,:,:,:], reg[m_plate])
-                    stack[cur_range,:,:,:] = tmp
+                    #if self.verbose: log.info(f"beep")
+                    #if self.verbose: log.debug(f"Before reg min/max /{np.max(stack, axis=(1,2,3))}")
+                    stack[cur_range,:,:,:] = apply_registration(stack[cur_range,:,:,:], reg[m_plate])
+                    #if self.verbose: log.debug(f"After reg  min/max {np.max(stack, axis=(1,2,3))}")
+                    #stack[cur_range,:,:,:] = tmp
                 
                 last_channel = last_channel +  m_dims['C'][0]
             if self.verbose: log.info(f"Read up to channel {last_channel} into image stack of shape {stack.shape}, {stack.dtype}")
+
         
         #-------------------------------------------------
         # Apply flatfield corrections
@@ -210,34 +232,48 @@ class ProcessedImageProvider():
                 bp_key = f"{row['plate']}_ch{row['orig_channel']}"
                 
                 if str(bp_key) in self.flatfields.keys():
-                    if self.verbose: log.info(f"Applying flatfield to: {iq.plate} well: {iq.get_well_id()} channel: {str(row['channel'])} field: {iq.field}")                    
+                    if self.verbose: log.info(f"Applying flatfield {bp_key} to: {iq.plate}/{iq.get_well_id()}/ch{str(row['channel'])}/f{iq.field}")                    
                     basic_model = self.flatfields[str(bp_key)]
 
-                    if self.uint32:
-                        stack[channel,:,:,:]=float_to_32bit_unint(basic_model.transform(stack[channel,:,:,:]))
-                    else:
-                        stack[channel,:,:,:]=float_to_16bit_unint(basic_model.transform(stack[channel,:,:,:]))
+                    # modify in place
+                    stack[channel,:,:,:] -= basic_model.darkfield
+                    stack[channel,:,:,:] /= basic_model.flatfield
+                    
+                    #if self.uint32:
+                    #    stack[channel,:,:,:]=float_to_32bit_unint(basic_model.transform(stack[channel,:,:,:]))
+                    #else:
+                    #    stack[channel,:,:,:]=float_to_16bit_unint(basic_model.transform(stack[channel,:,:,:]))
                                                     
             if self.verbose: log.info(f"Applied flatfieds to stack of shape {stack.shape}, {stack.dtype}")
         
         #-------------------------------------------------
         # Apply masks to the image to demultiplex
-        if self.mask_channels is not None:
-            for mask_channel in self.mask_channels:
+        if iq.plate in self.mask_channels:
+            for mask_channel in self.mask_channels[iq.plate]:
                 
                 # Read mask and convert to binary
                 mask = self.mask_reader.read_image(iq)
-                if self.verbose: log.debug(f"Read mask of shape {mask.shape} with {np.max(mask)} objects.")
+                if self.verbose: log.debug(f"Read mask of shape {mask.shape} with {np.max(mask)} objects and dtype {mask.dtype}")
                 
                 if (mask.shape[1] != stack.shape[1]):
                     raise RuntimeError(f"Mask and image must have the same dimensions, mask: {mask.shape}, image: {stack.shape}")
                 
-                mask[mask > 0] = 1
-                mask_inv = np.abs(1-mask)
+                # You can actually do operations with boolean directly in numpy
+                mask = mask > 0
+                #mask[mask > 0] = 1
                 
-                stack[last_channel, :,:,:] = stack[mask_channel,:,:,:] * mask
+                #if self.verbose: log.debug(f"Binarized mask of shape {mask.shape} with {np.max(mask)} max value and dtype {mask.dtype}")
+                #mask_inv = np.abs(1-mask)
+                
+                if self.verbose: log.debug(f"Masking channel {mask_channel}")
+                #stack[last_channel, :,:,:] = stack[mask_channel,:,:,:] * mask
+                stack[last_channel, :,:,:] = stack[mask_channel,:,:,:]
+                stack[last_channel, :,:,:] *= mask[0,:,:,:]
                 last_channel = last_channel + 1
-                stack[last_channel, :,:,:] = stack[mask_channel,:,:,:] * mask_inv
+
+                #stack[last_channel, :,:,:] = stack[mask_channel,:,:,:] * ~mask
+                stack[last_channel, :,:,:] = stack[mask_channel,:,:,:]
+                stack[last_channel, :,:,:] *= ~mask[0,:,:,:]
                 last_channel = last_channel + 1
 
             if self.verbose: log.info(f"Masked channels {self.mask_channels}. Resulting stack {stack.shape}, {stack.dtype}")
@@ -246,32 +282,45 @@ class ProcessedImageProvider():
         # Apply scaling factors
         if self.scaling_factors is not None:
             # Convert stack to 32 bit float
-            stack = stack.astype(np.float32)
+            #stack = stack.astype(np.float32)
             
             for index, row in self.channel_index.iterrows():
                 channel = int(row["channel"])
-                scale_key = f"{row['plate']}_ch{row['channel']}"
+                scale_key = f"{row['ref_plate']}_ch{row['channel']}"
                      
                 if str(scale_key) in self.scaling_factors.keys():
                     factor = self.scaling_factors[scale_key]
                     if self.verbose: log.debug(f"Scaling {scale_key} by factor {factor} for {row['plate']}, ch{channel}")
-                    if self.verbose: log.debug(f"Pre-scale min/max {np.min(stack[channel,:,:,:])}/{np.max(stack[channel,:,:,:])} dtype:{stack[channel,:,:,:].dtype}")
+                    #if self.verbose: log.debug(f"Pre-scale min/max {np.min(stack[channel,:,:,:])}/{np.max(stack[channel,:,:,:])} dtype:{stack[channel,:,:,:].dtype}")
                     # Divide
-                    stack[channel,:,:,:] = stack[channel,:,:,:] / factor
-                    if self.verbose: log.debug(f"Post-scale min/max {np.min(stack[channel,:,:,:])}/{np.max(stack[channel,:,:,:])} dtype:{stack[channel,:,:,:].dtype}")
+                    stack[channel,:,:,:] /= factor
+                    #if self.verbose: log.debug(f"Post-scale min/max {np.min(stack[channel,:,:,:])}/{np.max(stack[channel,:,:,:])} dtype:{stack[channel,:,:,:].dtype}")
                 else:
                     if self.verbose: log.warning(f"Scale key {scale_key} not found! NOT APPLYING SCALING FOR: {row['plate']}, ch{channel}")
             
-            # Scale back to uint
-            if self.uint32:
-                stack=float_to_32bit_unint(stack)
-                for channel in range(0,stack.shape[0]):
-                    if self.verbose: log.debug(f"Post clip min/max channel {channel} {np.min(stack[channel,:,:,:])}/{np.max(stack[channel,:,:,:])} dtype:{stack[channel,:,:,:].dtype}")
-            else:
-                stack=float_to_16bit_unint(stack)
-                for channel in range(0,stack.shape[0]):
-                    if self.verbose: log.debug(f"Post clip min/max channel {channel} {np.min(stack[channel,:,:,:])}/{np.max(stack[channel,:,:,:])} dtype:{stack[channel,:,:,:].dtype}")
+            
+        log.info(f"Processed stack min: {np.min(stack)} max: {np.max(stack)}")
         
+        # Scale back to uint
+        if self.uint32:
+            #stack=float_to_32bit_unint(stack)
+            stack = np.clip(stack, 0, np.iinfo(np.uint32).max, out=stack)
+            stack = stack.astype(np.uint32, copy=False)
+            #for channel in range(0,stack.shape[0]):
+            #    if self.verbose: log.debug(f"Post clip min/max channel {channel} {np.min(stack[channel,:,:,:])}/{np.max(stack[channel,:,:,:])} dtype:{stack[channel,:,:,:].dtype}")
+        else:
+            #stack=float_to_16bit_unint(stack)
+            
+            stack = np.round(stack, out=stack)
+            log.debug("rounded")
+            stack = np.clip(stack, 0, np.iinfo(np.uint16).max, out=stack)
+            log.debug("clipped")
+            stack = stack.astype(np.uint16)
+            log.debug("cast")
+            log.debug(f"{stack.dtype}, max: {np.max(stack)}")
+            #for channel in range(0,stack.shape[0]):
+            #    if self.verbose: log.debug(f"Post clip min/max channel {channel} {np.min(stack[channel,:,:,:])}/{np.max(stack[channel,:,:,:])} dtype:{stack[channel,:,:,:].dtype}")
+    
         return stack
     
     
