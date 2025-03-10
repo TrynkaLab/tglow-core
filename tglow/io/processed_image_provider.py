@@ -59,7 +59,11 @@ class ProcessedImageProvider():
             
         #---------------------------------------------------------------------
         # Build dict with pretrained flatfields models channel is the key
-        if flatfields == None:
+        
+        if self.plates_merge is None:
+            self.plates_merge = []
+        
+        if flatfields is None:
             self.flatfields=None
         else:
             self.flatfields={}
@@ -85,6 +89,8 @@ class ProcessedImageProvider():
                         log.info(f"Adding scaling factors: {keypair}")
                         self.scaling_factors[keypair[0]] = float(keypair[1])
 
+        if len(self.plates_merge) == 0:
+            self.plates_merge = None
         #---------------------------------------------------------------------
         # Optional demultiplexing
         self.mask_channels=None
@@ -248,35 +254,36 @@ class ProcessedImageProvider():
         
         #-------------------------------------------------
         # Apply masks to the image to demultiplex
-        if iq.plate in self.mask_channels:
-            for mask_channel in self.mask_channels[iq.plate]:
-                
-                # Read mask and convert to binary
-                mask = self.mask_reader.read_image(iq)
-                if self.verbose: log.debug(f"Read mask of shape {mask.shape} with {np.max(mask)} objects and dtype {mask.dtype}")
-                
-                if (mask.shape[1] != stack.shape[1]):
-                    raise RuntimeError(f"Mask and image must have the same dimensions, mask: {mask.shape}, image: {stack.shape}")
-                
-                # You can actually do operations with boolean directly in numpy
-                mask = mask > 0
-                #mask[mask > 0] = 1
-                
-                #if self.verbose: log.debug(f"Binarized mask of shape {mask.shape} with {np.max(mask)} max value and dtype {mask.dtype}")
-                #mask_inv = np.abs(1-mask)
-                
-                if self.verbose: log.debug(f"Masking channel {mask_channel}")
-                #stack[last_channel, :,:,:] = stack[mask_channel,:,:,:] * mask
-                stack[last_channel, :,:,:] = stack[mask_channel,:,:,:]
-                stack[last_channel, :,:,:] *= mask[0,:,:,:]
-                last_channel = last_channel + 1
+        if self.mask_channels is not None:
+            if iq.plate in self.mask_channels:
+                for mask_channel in self.mask_channels[iq.plate]:
+                    
+                    # Read mask and convert to binary
+                    mask = self.mask_reader.read_image(iq)
+                    if self.verbose: log.debug(f"Read mask of shape {mask.shape} with {np.max(mask)} objects and dtype {mask.dtype}")
+                    
+                    if (mask.shape[1] != stack.shape[1]):
+                        raise RuntimeError(f"Mask and image must have the same dimensions, mask: {mask.shape}, image: {stack.shape}")
+                    
+                    # You can actually do operations with boolean directly in numpy
+                    mask = mask > 0
+                    #mask[mask > 0] = 1
+                    
+                    #if self.verbose: log.debug(f"Binarized mask of shape {mask.shape} with {np.max(mask)} max value and dtype {mask.dtype}")
+                    #mask_inv = np.abs(1-mask)
+                    
+                    if self.verbose: log.debug(f"Masking channel {mask_channel}")
+                    #stack[last_channel, :,:,:] = stack[mask_channel,:,:,:] * mask
+                    stack[last_channel, :,:,:] = stack[mask_channel,:,:,:]
+                    stack[last_channel, :,:,:] *= mask[0,:,:,:]
+                    last_channel = last_channel + 1
 
-                #stack[last_channel, :,:,:] = stack[mask_channel,:,:,:] * ~mask
-                stack[last_channel, :,:,:] = stack[mask_channel,:,:,:]
-                stack[last_channel, :,:,:] *= ~mask[0,:,:,:]
-                last_channel = last_channel + 1
+                    #stack[last_channel, :,:,:] = stack[mask_channel,:,:,:] * ~mask
+                    stack[last_channel, :,:,:] = stack[mask_channel,:,:,:]
+                    stack[last_channel, :,:,:] *= ~mask[0,:,:,:]
+                    last_channel = last_channel + 1
 
-            if self.verbose: log.info(f"Masked channels {self.mask_channels}. Resulting stack {stack.shape}, {stack.dtype}")
+                if self.verbose: log.info(f"Masked channels {self.mask_channels}. Resulting stack {stack.shape}, {stack.dtype}")
     
         #-------------------------------------------------
         # Apply scaling factors
