@@ -71,7 +71,7 @@ class CompoundImageProvider():
         pb = tqdm(total=self.nimg, desc='Reading', unit='image')
         while i < self.nimg:
             i=i+1
-            training_imgs_tmp.extend(self.__fetch_compound(sample_n))
+            training_imgs_tmp.extend(self.fetch_compound(sample_n))
             pb.update(1)
             #log.info(f"[{i}/{self.nimg}]")
         pb.close()
@@ -106,7 +106,7 @@ class CompoundImageProvider():
         pb = tqdm(total=self.nimg, desc='Reading', unit='image')
         while i < self.nimg:
             i=i+1
-            for final_img in self.__fetch_compound(self.merge_n):
+            for final_img in self.fetch_compound(self.merge_n):
                 #if rescale:
                 #    final_img = final_img.astype(np.float32) 
                 #    final_img = final_img / self.max_value
@@ -140,7 +140,7 @@ class CompoundImageProvider():
         else:
             return(avg_image)
 
-    def __fetch_compound(self, sample_n):
+    def fetch_compound(self, sample_n):
         
         # Select subset of images
         merge_files = random.choices(self.all_imgs, k=sample_n)
