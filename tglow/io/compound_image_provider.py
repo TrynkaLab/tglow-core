@@ -2,6 +2,7 @@ import logging
 import time
 import random
 import numpy as np
+import psutil
 
 from tglow.io.image_query import ImageQuery
 from tglow.io.tglow_io import AICSImageReader, BlacklistReader
@@ -15,6 +16,9 @@ logging.basicConfig(format='%(asctime)s %(message)s')
 log = logging.getLogger(__name__)
 log.setLevel(logging.DEBUG)
 
+
+def memory_usage():
+    return psutil.Process().memory_info().rss / (1024 * 1024)  # in MB
 
 class CompoundImageProvider():
     
@@ -68,10 +72,13 @@ class CompoundImageProvider():
         else:
             sample_n = self.merge_n
         
+        initial_memory = memory_usage()
+        
         pb = tqdm(total=self.nimg, desc='Reading', unit='image')
         while i < self.nimg:
-            i=i+1
+            i=i+1            
             training_imgs_tmp.extend(self.fetch_compound(sample_n))
+            pb.set_description(f"Reading. Memory usage: {memory_usage() - initial_memory:.2f} MB")
             pb.update(1)
             #log.info(f"[{i}/{self.nimg}]")
         pb.close()
