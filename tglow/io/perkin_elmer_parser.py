@@ -16,7 +16,6 @@ import re
 import json
 import logging
 import numpy as np
-import argparse
 from xml.etree import ElementTree as ET
 from tglow.io.image_query import ImageQuery
 
