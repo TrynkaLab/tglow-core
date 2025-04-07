@@ -242,8 +242,9 @@ class ProcessedImageProvider():
                     basic_model = self.flatfields[str(bp_key)]
 
                     # modify in place
-                    stack[channel,:,:,:] -= basic_model.darkfield
-                    stack[channel,:,:,:] /= basic_model.flatfield
+                    stack[channel,:,:,:] -= basic_model.darkfield[np.newaxis,:,:]
+                    stack[channel,:,:,:] /= basic_model.flatfield[np.newaxis,:,:]
+                            
                     
                     #if self.uint32:
                     #    stack[channel,:,:,:]=float_to_32bit_unint(basic_model.transform(stack[channel,:,:,:]))
