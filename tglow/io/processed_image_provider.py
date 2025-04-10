@@ -7,7 +7,7 @@ import pickle
 
 from tglow.io.image_query import ImageQuery
 from tglow.io.tglow_io import AICSImageReader, BlacklistReader
-from tglow.utils.tglow_utils import apply_registration, float_to_32bit_unint, float_to_16bit_unint
+from tglow.utils.tglow_utils import apply_registration, apply_registration_cv, float_to_32bit_unint, float_to_16bit_unint
 from basicpy import BaSiC
 
 # Logging
@@ -215,13 +215,31 @@ class ProcessedImageProvider():
                 
                 cur_range = range(last_channel, last_channel + m_dims['C'][0])
                 stack[cur_range,:,:,:] = self.plate_reader.read_image(m_iq)
-                
+                if self.verbose: log.info(f"Read images for {m_plate}")
+
                 if self.registration_dir is not None:
                     if self.verbose: log.info(f"Applying registration")
                     reg = self.fetch_registration(iq)
-                    #if self.verbose: log.info(f"beep")
                     #if self.verbose: log.debug(f"Before reg min/max /{np.max(stack, axis=(1,2,3))}")
-                    stack[cur_range,:,:,:] = apply_registration(stack[cur_range,:,:,:], reg[m_plate])
+                    
+                    # Make sure the registration has the right dtype
+                    # This is a 3x3 homography matrix
+                    # In the tglow pipeline, only the translation is set
+                    # [1, 0, x]
+                    # [0, 1, y]
+                    # [0, 0, 1]
+                    reg_mat = reg[m_plate].astype(np.float32)
+
+                    # https://stackoverflow.com/questions/78691652/applying-an-affine-transformation-using-opencv-skimage-and-scipy-returns-diffe
+                    # As the matrices were saved following the StackReg convention, we need to flip them again
+                    reg_mat = np.linalg.inv(reg_mat)
+
+                    # Skimage affine transform, works, but slower
+                    #stack[cur_range,:,:,:] = apply_registration(stack[cur_range,:,:,:], reg_mat)
+                    
+                    # Use open cv warpPerspective instead of skimage, as it is much faster
+                    stack[cur_range,:,:,:] = apply_registration_cv(stack[cur_range,:,:,:], reg_mat)
+                    
                     #if self.verbose: log.debug(f"After reg  min/max {np.max(stack, axis=(1,2,3))}")
                     #stack[cur_range,:,:,:] = tmp
                 

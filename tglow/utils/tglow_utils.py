@@ -6,6 +6,7 @@ import string
 import collections
 import struct
 import logging
+import cv2
 from skimage import transform
 
 
@@ -233,5 +234,26 @@ def apply_registration(stack, alignment_matrix):
                 #log.debug(f"Aligning stack of shape {stack[i,j,:,:].shape}")
                 #, preserve_range=True,
                 stack[i,j,:,:] = transform.warp(stack[i,j,:,:], tform, order=0, preserve_range=True)
+    
+    return stack
+    
+# Apply 2d registration, using opencv instead of skimage
+def apply_registration_cv(stack, alignment_matrix):
+        
+    # If the stack is 2d YX
+    if len(stack.shape) == 2:
+        stack = cv2.warpPerspective(stack, alignment_matrix, dsize=stack.shape)
+        
+    # If the stack is 3d CYX or ZYX
+    elif len(stack.shape) == 3:
+        
+        for i in range(0, stack.shape[0]):
+            stack[i,:,:] = cv2.warpPerspective(stack[i,:,:], alignment_matrix, dsize=stack[i,:,:].shape)
+
+    # If the stack is CZYX
+    elif len(stack.shape) == 4:
+        for i in range(0, stack.shape[0]):
+            for j in range(0, stack.shape[1]):
+                stack[i,j,:,:] = cv2.warpPerspective(stack[i,j,:,:], alignment_matrix, dsize=stack[i,j,:,:].shape)
     
     return stack
