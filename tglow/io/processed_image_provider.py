@@ -206,44 +206,18 @@ class ProcessedImageProvider():
         #if self.verbose: log.debug(f"Stack dtype {stack.dtype}")
 
         #-------------------------------------------------
-        # If plates need to be merged, and or registred do that here
+        # Read any additional cycles
         if self.plates_merge is not None:
             for m_plate in self.plates_merge:
                 m_iq = copy.deepcopy(iq)
                 m_iq.plate = m_plate
                 m_dims = self.plate_reader.get_img(m_iq).dims
-                
                 cur_range = range(last_channel, last_channel + m_dims['C'][0])
+                
                 stack[cur_range,:,:,:] = self.plate_reader.read_image(m_iq)
                 if self.verbose: log.info(f"Read images for {m_plate}")
-
-                if self.registration_dir is not None:
-                    if self.verbose: log.info(f"Applying registration")
-                    reg = self.fetch_registration(iq)
-                    #if self.verbose: log.debug(f"Before reg min/max /{np.max(stack, axis=(1,2,3))}")
-                    
-                    # Make sure the registration has the right dtype
-                    # This is a 3x3 homography matrix
-                    # In the tglow pipeline, only the translation is set
-                    # [1, 0, x]
-                    # [0, 1, y]
-                    # [0, 0, 1]
-                    reg_mat = reg[m_plate].astype(np.float32)
-
-                    # https://stackoverflow.com/questions/78691652/applying-an-affine-transformation-using-opencv-skimage-and-scipy-returns-diffe
-                    # As the matrices were saved following the StackReg convention, we need to flip them again
-                    reg_mat = np.linalg.inv(reg_mat)
-
-                    # Skimage affine transform, works, but slower
-                    #stack[cur_range,:,:,:] = apply_registration(stack[cur_range,:,:,:], reg_mat)
-                    
-                    # Use open cv warpPerspective instead of skimage, as it is much faster
-                    stack[cur_range,:,:,:] = apply_registration_cv(stack[cur_range,:,:,:], reg_mat)
-                    
-                    #if self.verbose: log.debug(f"After reg  min/max {np.max(stack, axis=(1,2,3))}")
-                    #stack[cur_range,:,:,:] = tmp
                 
-                last_channel = last_channel +  m_dims['C'][0]
+                last_channel = last_channel + m_dims['C'][0]
             if self.verbose: log.info(f"Read up to channel {last_channel} into image stack of shape {stack.shape}, {stack.dtype}")
 
         
@@ -259,18 +233,46 @@ class ProcessedImageProvider():
                     if self.verbose: log.info(f"Applying flatfield {bp_key} to: {iq.plate}/{iq.get_well_id()}/ch{str(row['channel'])}/f{iq.field}")                    
                     basic_model = self.flatfields[str(bp_key)]
 
+                    basic_model.darkfield = basic_model.darkfield.astype(np.float32)
+                    basic_model.flatfield = basic_model.flatfield.astype(np.float32)
+
                     # modify in place
                     stack[channel,:,:,:] -= basic_model.darkfield[np.newaxis,:,:]
                     stack[channel,:,:,:] /= basic_model.flatfield[np.newaxis,:,:]
-                            
-                    
-                    #if self.uint32:
-                    #    stack[channel,:,:,:]=float_to_32bit_unint(basic_model.transform(stack[channel,:,:,:]))
-                    #else:
-                    #    stack[channel,:,:,:]=float_to_16bit_unint(basic_model.transform(stack[channel,:,:,:]))
                                                     
             if self.verbose: log.info(f"Applied flatfieds to stack of shape {stack.shape}, {stack.dtype}")
         
+        #-------------------------------------------------
+        # Apply registration
+        if self.registration_dir is not None and self.plates_merge is not None:
+            # Reset last channel to first cycle max
+            last_channel = img.dims['C'][0]
+
+            for m_plate in self.plates_merge:
+                m_iq = copy.deepcopy(iq)
+                m_iq.plate = m_plate
+                m_dims = self.plate_reader.get_img(m_iq).dims
+                cur_range = range(last_channel, last_channel + m_dims['C'][0])
+                                
+                if self.verbose: log.info(f"Applying registration for {m_plate}")
+                reg = self.fetch_registration(iq)
+                
+                # Make sure the registration has the right dtype
+                # This is a 3x3 homography matrix
+                # In the tglow pipeline, only the translation is set
+                # [1, 0, x]
+                # [0, 1, y]
+                # [0, 0, 1]
+                reg_mat = reg[m_plate].astype(np.float32)
+
+                # https://stackoverflow.com/questions/78691652/applying-an-affine-transformation-using-opencv-skimage-and-scipy-returns-diffe
+                # As the matrices were saved following the StackReg convention, we need to flip them again
+                reg_mat = np.linalg.inv(reg_mat)
+                
+                # Use open cv warpPerspective instead of skimage, as it is much faster
+                stack[cur_range,:,:,:] = apply_registration_cv(stack[cur_range,:,:,:], reg_mat)
+                last_channel = last_channel +  m_dims['C'][0]
+
         #-------------------------------------------------
         # Apply masks to the image to demultiplex
         if self.mask_channels is not None:
@@ -341,7 +343,7 @@ class ProcessedImageProvider():
             log.debug("rounded")
             stack = np.clip(stack, 0, np.iinfo(np.uint16).max, out=stack)
             log.debug("clipped")
-            stack = stack.astype(np.uint16)
+            stack = stack.astype(np.uint16, copy=False)
             log.debug("cast")
             log.debug(f"{stack.dtype}, max: {np.max(stack)}")
             #for channel in range(0,stack.shape[0]):
