@@ -63,7 +63,6 @@ class ProcessedImageProvider():
             
         #---------------------------------------------------------------------
         # Build dict with pretrained flatfields models channel is the key
-        
         if self.plates_merge is None:
             self.plates_merge = []
         
@@ -93,9 +92,27 @@ class ProcessedImageProvider():
                         log.info(f"Adding scaling factors: {keypair}")
                         self.scaling_factors[keypair[0]] = float(keypair[1])
 
+        # Do some input checking to avoid runtime issues
+        if (scaling_slope is None & scaling_bias is not None) | (scaling_slope is not None & scaling_bias is None):
+            log.error("Either scaling_bias or scaling_slope is None. Either both must be set to a value, or must both be set to None")
+            raise RuntimeError("Must supply both scaling_bias and scaling slope")
+            
+        if (scaling_slope is not None and scaling_factors is None):
+            log.error("Must supply scaling_factors when using scaling_slope & scaling_bias")
+            raise RuntimeError("Must supply scaling_factors when using scaling_slope & scaling_bias")            
+
         # These control the shape of the sigmoid curve of intensity that is 
         # optionally applied to the scaling factor
-        self.scaling_slope=scaling_slope
+        if scaling_slope == None:
+            self.scaling_slopes=None
+        else:
+            self.scaling_slopes={}
+            for val in scaling_slope:
+                keypair = val.split("=")
+                for curp in self.plates + self.plates_merge:
+                    if curp in keypair[0]:
+                        log.info(f"Adding scaling slope: {keypair}")
+                        self.scaling_slopes[keypair[0]] = float(keypair[1])
         
         if scaling_bias == None:
             self.scaling_biases=None
@@ -108,7 +125,8 @@ class ProcessedImageProvider():
                     if curp in keypair[0]:
                         log.info(f"Adding scaling bias: {keypair}")
                         self.scaling_biases[keypair[0]] = float(keypair[1])
-        
+
+        #---------------------------------------------------------------------
         if len(self.plates_merge) == 0:
             self.plates_merge = None
         #---------------------------------------------------------------------
@@ -342,22 +360,23 @@ class ProcessedImageProvider():
                     if self.verbose: log.debug(f"Scaling {scale_key} by factor {factor} for {row['plate']}, ch{channel}")
                     #if self.verbose: log.debug(f"Pre-scale min/max {np.min(stack[channel,:,:,:])}/{np.max(stack[channel,:,:,:])} dtype:{stack[channel,:,:,:].dtype}")
                     
-                    if self.scale_bias is None:
+                    if self.scaling_biases is None:
                         # Divide
                         stack[channel,:,:,:] /= factor
                     else:
-                        #scaling_slope = self.scaling_slopes[scale_key]
                         scaling_bias = self.scaling_biases[scale_key]
-                        
-                        if self.verbose: log.debug(f"Weighing scale factor with sigmoid for {scale_key} with slope, bias {self.scaling_slope}, {scaling_bias}")
+                        scaling_slope = self.scaling_slopes[scale_key]
+
+                        if self.verbose: log.debug(f"Weighing scale factor with sigmoid for {scale_key} with slope, bias {scaling_slope}, {scaling_bias}")
                         
                         # Determine the weight of the scaling for each pixel value, this forms a "soft threshold"
                         # which means the scaling will be softenend for low intensities. scaling_bias
-                        # sets the point where the sigmoid returns 0.5. set this roughly to the highest intensity
-                        # of the background signal. scaling_slope controls the slope or smoothnes of the transition
+                        # sets the point where the sigmoid returns 0.5.
+                        # scaling_slope controls the slope or smoothnes of the transition
                         # Setting it too smooth will have a bad impact on the data. Setting the bias too low is equivalent
-                        # to scaling equally over all pixels.  
-                        scale_weight = sigmoid(stack[channel,:,:,:], self.scaling_slope, scaling_bias)
+                        # to scaling equally over all pixels. 
+                        # Optimal values are pre-caclulated outside this script.
+                        scale_weight = sigmoid(stack[channel,:,:,:], scaling_slope, scaling_bias)
                         
                         # This ensures when the weight is 0, no scaling is applied and when the weight
                         # is one, the scaling is equal to factor. It also ensures if scaling is >0<1
