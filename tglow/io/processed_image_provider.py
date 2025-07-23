@@ -93,11 +93,11 @@ class ProcessedImageProvider():
                         self.scaling_factors[keypair[0]] = float(keypair[1])
 
         # Do some input checking to avoid runtime issues
-        if (scaling_slope is None & scaling_bias is not None) | (scaling_slope is not None & scaling_bias is None):
+        if ((scaling_slope is None) and (scaling_bias is not None)) | ((scaling_slope is not None) and (scaling_bias is None)):
             log.error("Either scaling_bias or scaling_slope is None. Either both must be set to a value, or must both be set to None")
             raise RuntimeError("Must supply both scaling_bias and scaling slope")
             
-        if (scaling_slope is not None and scaling_factors is None):
+        if ((scaling_slope is not None) and (scaling_factors is None)):
             log.error("Must supply scaling_factors when using scaling_slope & scaling_bias")
             raise RuntimeError("Must supply scaling_factors when using scaling_slope & scaling_bias")            
 
