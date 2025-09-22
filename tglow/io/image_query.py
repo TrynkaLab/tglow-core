@@ -33,6 +33,8 @@ class ImageQuery:
             self.field = str(field)
         elif type(field) is str:
             self.field = field
+        elif field is None:
+            self.field = None
         else:
             raise TypeError("Not a valid type for field")
         
@@ -56,6 +58,13 @@ class ImageQuery:
         else:
             self.plane=None
             
+    
+    @classmethod
+    def from_plate_well(cls, plate, well):
+        
+        row, col = ImageQuery.well_id_to_index(well)
+        return(cls(plate, row, col, None))
+    
     def get_well_id(self):
         return f"{ImageQuery.ID_TO_ROW[self.row]}{self.col.zfill(2)}"
     
