@@ -13,6 +13,7 @@ from aicsimageio import AICSImage
 from aicsimageio.writers import OmeTiffWriter
 from aicsimageio.readers.ome_tiff_reader import OmeTiffReader
 
+from skimage import filters
 
 from tglow.io.image_query import ImageQuery
 from tglow.io.perkin_elmer_parser import PerkinElmerParser
@@ -556,7 +557,8 @@ class AICSImageWriter():
         for channel in range(stack.shape[0]):
             tmp = np.percentile(stack[channel],[0, 0.1, 1, 5, 25, 5, 75, 95, 99, 99.9, 99.99, 99.999, 99.9999, 99.99999, 100]).tolist()
             tmp.append(np.mean(stack[channel]))
-            
+            tmp.append(filters.threshold_otsu(stack[channel]))
+                        
             self.image_stats_buffer[f"{query.field}"][channel] = tmp
 
         if not stats_only:
@@ -573,7 +575,7 @@ class AICSImageWriter():
         outdir = f"{self.path}/{query.plate}/{ImageQuery.ID_TO_ROW[query.row]}/{query.col}"
         info_file=open(f"{outdir}/intensity_stats.tsv", 'w')
         
-        info_file.write(f"plate\trow\tcol\timage\tchannel\tq0\tq0.1\tq1\tq5\tq25\tq50\tq75\tq95\tq99\tq99.9\tq99.99\tq99.999\tq99.9999\t99.99999\tq100\tmean\n")
+        info_file.write(f"plate\trow\tcol\timage\tchannel\tq0\tq0.1\tq1\tq5\tq25\tq50\tq75\tq95\tq99\tq99.9\tq99.99\tq99.999\tq99.9999\t99.99999\tq100\tmean\totsu\n")
 
         for field in self.image_stats_buffer:
             for channel in self.image_stats_buffer[field]:
