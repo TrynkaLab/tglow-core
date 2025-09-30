@@ -1,5 +1,4 @@
 aicsimageio>=4.14.0
-matplotlib>=3.8.3
 numpy>=1.26.4
 ome_model>=6.3.6
 scipy<1.13
@@ -7,3 +6,9 @@ setuptools>=69.2.0
 scikit-image>=0.20.0
 tifffile>=2022.4.8
 pandas
+tqdm
+psutil
+basicpy
+tifffile
+matplotlib
+cv2

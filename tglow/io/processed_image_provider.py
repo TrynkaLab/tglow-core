@@ -229,7 +229,7 @@ class ProcessedImageProvider():
             
     # Fetch a single image 
     def fetch_image(self, iq):
-                
+ 
         # Pre allocate a nupy array to avoid creating copies (quite a big speedup)
         # Updated to init at float32 straight away, and only coverting back at the end
         stack = np.zeros((self.dims['C'], self.dims['Z'], self.dims['Y'], self.dims['X']), dtype=np.float32)
@@ -246,9 +246,17 @@ class ProcessedImageProvider():
         #-------------------------------------------------
         # Read any additional cycles
         if self.plates_merge is not None:
-            for m_plate in self.plates_merge:
+            for m_plate in self.plates_merge:                
                 m_iq = copy.deepcopy(iq)
                 m_iq.plate = m_plate
+              
+                # Check the fields are available
+                m_fields = self.plate_reader.get_fields(m_iq)
+                        
+                if iq.field not in m_fields:
+                    if self.verbose: log.warning(f"Field {iq.field} not found for {m_plate}. Returning None")
+                    return None
+                
                 m_dims = self.plate_reader.get_img(m_iq).dims
                 cur_range = range(last_channel, last_channel + m_dims['C'][0])
                 

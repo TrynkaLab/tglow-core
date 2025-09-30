@@ -282,10 +282,11 @@ class AICSImageReader():
         self.plates = set(plates)
         self.rows = {}
         self.cols = {}
-        self.fields = {}
         self.images = {}
+        self.fields_global = {}
         fields = []
-        
+        fields_dict = nested_dict()
+
         self.suffix=None
 
         for plate in plates:
@@ -333,9 +334,12 @@ class AICSImageReader():
                     if self.fields_filter is not None:
                         fields = [field for field in fields if field in self.fields_filter]
                         
-                    if plate not in self.fields:
-                        self.fields[plate] = set()
-                    self.fields[plate].update(fields)
+                    fields_dict[str(plate)][str(conv[row])][str(col)] = fields
+                        
+                    # Global fields
+                    if plate not in self.fields_global:
+                        self.fields_global[plate] = set()
+                    self.fields_global[plate].update(fields)
                     
                     if plate not in self.images:
                         self.images[plate] = []
@@ -346,6 +350,7 @@ class AICSImageReader():
                         self.images[plate].append(iq)
                         
         self.index = default_to_regular(index)
+        self.fields = default_to_regular(fields_dict)
         self.wells = wells
         
                     
@@ -365,6 +370,9 @@ class AICSImageReader():
     def get_img(self, query):
         img = AICSImage(f"{self.path}/{query.plate}/{ImageQuery.ID_TO_ROW[query.row]}/{query.col}/{query.field}{self.suffix}")
         return img
+    
+    def get_fields(self, query):
+        return self.fields[str(query.plate)][str(query.row)][str(query.col)]
     
     def read_image(self, query) -> np.ndarray:
         """Get a single image"""
@@ -452,6 +460,9 @@ class ControlRecord():
         self.well = well
         self.channels = [int(x) for x in channels]
         self.name = name
+        row, col = ImageQuery.well_id_to_index(self.well)
+        self.row = row
+        self.col = col
     
     def get_row_col(self):
         row, col = ImageQuery.well_id_to_index(self.well)

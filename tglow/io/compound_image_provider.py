@@ -8,7 +8,6 @@ from tglow.io.image_query import ImageQuery
 from tglow.io.tglow_io import AICSImageReader, BlacklistReader
 from tglow.utils.tglow_utils import float_to_16bit_unint_scaled, float_to_16bit_unint
 
-from skimage import data, filters
 from tqdm import tqdm
 
 # Logging
@@ -80,7 +79,6 @@ class CompoundImageProvider():
             training_imgs_tmp.extend(self.fetch_compound(sample_n))
             pb.set_description(f"Reading. Memory usage: {memory_usage() - initial_memory:.2f} MB")
             pb.update(1)
-            #log.info(f"[{i}/{self.nimg}]")
         pb.close()
 
         log.info(f"Reading took { round(((time.time() - start_time)/60), 2)} minutes, read {len(training_imgs_tmp)} images")
@@ -101,7 +99,6 @@ class CompoundImageProvider():
         
     def fetch_compound_image_mean_max(self, max_project=False):
         sum_image=None
-        sum_mask=None
         max_image=None
         i=0
         start_time = time.time()
@@ -114,31 +111,19 @@ class CompoundImageProvider():
         while i < self.nimg:
             i=i+1
             for final_img in self.fetch_compound(self.merge_n):
-                #if rescale:
-                #    final_img = final_img.astype(np.float32) 
-                #    final_img = final_img / self.max_value
-                    
                 if sum_image is None:
                     sum_image = np.zeros_like(final_img, dtype=np.float32)
-                    sum_mask = np.ones_like(final_img, dtype=np.float32)
                     max_image = np.zeros_like(final_img, dtype=np.float32)
 
                 sum_image = sum_image + final_img
                 
                 max_image[final_img > max_image] = final_img[final_img > max_image]
-                    
-                #if threshold:
-                #    thresh = filters.threshold_otsu(final_img)
-                #    sum_mask += (final_img > thresh)
-                    
+
                 total_imgs += 1
             pb.update(1)
-            #log.info(f"[{i}/{self.nimg}]")
             
         pb.close()
-        #if threshold:
-        #    avg_image = sum_image / sum_mask
-        #else:
+ 
         avg_image = sum_image / self.nimg
         log.info(f"Reading took { round(((time.time() - start_time)/60), 2)} minutes")
         
@@ -163,39 +148,31 @@ class CompoundImageProvider():
             q.channel = self.channel
             training_imgs_tmp.append(self.fetch_image(q))
             j += 1
-                        
-        #log.debug(f"Read {len(training_imgs_tmp)} stacks of {training_imgs_tmp[j-1].shape} into array")
-        
+                                
         if self.merge_n > 1:
             final_output.append(np.max(np.array(training_imgs_tmp), axis=0))
-            # Mean projection
-            #mean_tmp = np.mean(np.array(training_imgs_tmp), axis=0)
-            #mean_tmp[mean_tmp < 0] = 0
-            #mean_tmp = float_to_16bit_unint(mean_tmp)
-            #final_output.append(mean_tmp)
         else:
-            #final_output.extend(training_imgs_tmp)
             final_output = training_imgs_tmp
                     
         return(final_output)
 
     def fetch_image(self, q):
             
-            if self.all_planes:
-                img = self.ac_reader.read_image(q)
-                if self.max_project:
-                    img = np.max(img, axis=0)
-                else:
-                    return(list(img))
+        if self.all_planes:
+            img = self.ac_reader.read_image(q)
+            if self.max_project:
+                img = np.max(img, axis=0)
             else:
-                if self.planes is not None:
-                    rplane = random.sample(self.planes, k=1)[0]
-                else:
-                    rplane = random.sample(range(0, self.stack_dims["Z"][0]), k=1)[0]
-                q.plane = rplane
-                img = self.ac_reader.read_image(q)
-                
-            return(img)
+                return(list(img))
+        else:
+            if self.planes is not None:
+                rplane = random.sample(self.planes, k=1)[0]
+            else:
+                rplane = random.sample(range(0, self.stack_dims["Z"][0]), k=1)[0]
+            q.plane = rplane
+            img = self.ac_reader.read_image(q)
+            
+        return(img)
         
 
 
