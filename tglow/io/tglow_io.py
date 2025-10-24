@@ -135,6 +135,10 @@ class IndexedImageReader:
         else:
             channels = [query.channel]
         
+        for channel in channels:
+            if str(channel) not in self.index[query.plate][query.row][query.col][query.field]:
+                log.warning(f"Channel {channel} not found for plate/row/col/field {query.plate}/{query.row}/{query.col}/{query.field}. returning None")
+                return None
         #log.info(f"Identified {len(channels)} channels")        
         
         planes=[]
@@ -143,8 +147,13 @@ class IndexedImageReader:
         else:
             planes = [query.plane]
             
-        #log.info(f"Identified {len(planes)} planes")        
-
+        # Check if all planes exist in index
+        for channel in channels:
+            for plane in planes:
+                if str(plane) not in self.index[query.plate][query.row][query.col][query.field][str(channel)]:
+                    log.warning(f"Plane {plane} not found in index for plate/row/col/field/channel {query.plate}/{query.row}/{query.col}/{query.field}/{channel}. returning None")
+                    return None
+                
         # Init empty 4d numpy array
         stack = np.empty(shape=(len(channels),
                                 len(planes),
