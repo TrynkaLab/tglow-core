@@ -27,6 +27,10 @@ cd tglow-core
 pip install -e .
 ```
 
+# Acknowledgements
+We thank Martin Prete who supplied an inital version of the XML parsing script on which we iterated.
+
+
 # References
-https://github.com/AllenCellModeling/aicsimageio
-https://github.com/bioio-devs/bioio
+- https://github.com/AllenCellModeling/aicsimageio
+- https://github.com/bioio-devs/bioio
