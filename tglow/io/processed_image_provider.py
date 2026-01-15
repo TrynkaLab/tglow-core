@@ -1,3 +1,11 @@
+"""Higher-level processed image provider.
+
+`ProcessedImageProvider` assembles image stacks from one or more plates,
+applies optional flatfield correction, registration, masking and scaling and
+returns a combined CZYX (or similar) numpy array ready for downstream
+processing.
+"""
+
 import logging
 import copy
 import pandas as pd
@@ -21,6 +29,12 @@ def sigmoid(x, slope, bias):
 
 
 class ProcessedImageProvider():
+        """Builds processed image stacks for a plate.
+
+        The provider can merge channels from multiple plates (cycles), apply
+        flatfield corrections, registration transforms and optional masking
+        to produce a single multi-channel stack per well/field.
+        """
         
     def __init__(self, path, plate, blacklist=None, plate_merge=None, registration_dir=None, flatfields=None, scaling_factors=None, mask_channels=None, mask_dir=None, mask_pattern=None, uint32=False, verbose=True, scaling_slope=0.001, scaling_bias=None):
         
@@ -160,6 +174,12 @@ class ProcessedImageProvider():
     
     # Build an index of what the new image channels will look like given these settings    
     def build_channel_index(self):
+        """Construct a pandas DataFrame describing output channels.
+
+        The `channel_index` maps output channel ids to the source plate/cycle and
+        original channel id and name. It is used to populate and transform the
+        assembled stack.
+        """
     
         # Peak at an image for channel dims and names
         img = self.plate_reader.get_img(self.plate_reader.images[self.plates[0]][0])      
@@ -229,6 +249,10 @@ class ProcessedImageProvider():
             
     # Fetch a single image 
     def fetch_image(self, iq):
+        """Fetch and return a processed image stack for the provided `ImageQuery`.
+
+        Returns a numpy array (C,Z,Y,X) with corrections and merges applied.
+        """
  
         # Pre allocate a nupy array to avoid creating copies (quite a big speedup)
         # Updated to init at float32 straight away, and only coverting back at the end
@@ -424,6 +448,10 @@ class ProcessedImageProvider():
     
     # Fetch the registration matrices for a well as a dict
     def fetch_registration(self, iq) -> dict:
+        """Load registration matrices for a well from the registration directory.
+
+        Expects a pickle containing a dict of plate->3x3 homography matrices.
+        """
         pickle_path = f"{self.registration_dir}/{iq.plate}/{ImageQuery.ID_TO_ROW[iq.row]}/{iq.col}/{iq.field}.pickle"
         
         if os.path.isfile(pickle_path):
@@ -437,11 +465,15 @@ class ProcessedImageProvider():
   
     
     def get_wells(self):
+        """Return the set of wells indexed for the main plate."""
         return self.plate_reader.get_wells()
 
 
     def write_channel_index(self, output):
-        
+        """Write `channel_index` to `output/<plate>/channel_indices.tsv`.
+
+        If the output folder does not exist it will be created.
+        """
         # Write the output
         outdir = f"{output}/{self.plates[0]}"
         if not os.path.exists(outdir):

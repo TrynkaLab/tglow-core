@@ -1,3 +1,12 @@
+"""I/O helpers for tglow: readers, writers and index helpers.
+
+This module contains classes to read indexed image layouts (plate/row/col/field)
+and to parse PerkinElmer exports. Main public classes include:
+- `IndexedImageReader` / `PerkinElmerRawReader` for indexed TIFF images
+- `AICSImageReader` / `AICSImageWriter` for OME-TIFF stacks
+- `ProcessedImageProvider` for higher-level assembled stacks and processing
+"""
+
 import sys
 import numpy as np
 import tifffile
@@ -432,7 +441,12 @@ class BlacklistReader():
         self.sep=sep
         
     def read_blacklist(self, separator=":"):
-    
+        """Read a simple blacklist file and return entries joined with `separator`.
+
+        The blacklist is expected to be a delimited file (default tab-delimited)
+        with at least two columns per row; the first two columns are joined with
+        `separator` and returned as a list of strings.
+        """
         result = []
         with open(self.path, 'r') as file:
             reader = csv.reader(file, delimiter=self.sep)
@@ -446,6 +460,11 @@ class BlacklistReader():
     def read_blacklist_as_prc(self, separator="/"):
        # jm52_20231101_CellDivider_Batch1_Day3	F08
        
+        """Read the blacklist and return entries in 'plate/row/col' form.
+
+        Assumes the input file has the plate id in column 0 and a well id (e.g.
+        'F08') in column 1. Skips the first row (header).
+        """
         result = []
         with open(self.path, 'r') as file:
             reader = csv.reader(file, delimiter=self.sep)
@@ -453,8 +472,6 @@ class BlacklistReader():
             for cur_row in reader:
                 if i > 0:
                     if len(cur_row) >= 2:
-                        #combined_string = separator.join(row[:2])
-                        #result.append(combined_string)
                         row, col = ImageQuery.well_id_to_index(cur_row[1])
                         combined_string = f"{cur_row[0]}{separator}{ImageQuery.ID_TO_ROW[str(row)]}{separator}{str(col)}"
                         result.append(combined_string)  
@@ -474,14 +491,17 @@ class ControlRecord():
         self.col = col
     
     def get_row_col(self):
+        """Return (row, col) for the control well."""
         row, col = ImageQuery.well_id_to_index(self.well)
         return row, col
     
     def get_rowchar(self):
+        """Return the row letter for the control (e.g. 'A')."""
         row, col = ImageQuery.well_id_to_index(self.well)
         return ImageQuery.ID_TO_ROW[str(row)]
         
     def get_query(self, field):
+        """Return an `ImageQuery` for this control at the given `field`."""
         row, col = self.get_row_col()
         return ImageQuery(self.plate, row, col, field)
     
@@ -499,7 +519,11 @@ class ControllistReader():
             self.blacklist=[]
         
     def read_controlist(self):
-    
+        """Read a control list TSV and return `ControlRecord` objects.
+
+        The expected format is: plate \t well \t channels(1-indexed, comma-separated) \t name
+        Lines referencing blacklisted wells are skipped.
+        """
         nwells_blacklist=0
         nwells = 0
         result = []

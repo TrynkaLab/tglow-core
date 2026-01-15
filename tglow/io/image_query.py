@@ -1,9 +1,25 @@
+"""Small utility for representing a plate/well/field/channel/plane query.
+
+`ImageQuery` is a lightweight container used across tglow readers/writers to
+identify a single image or stack within a plate layout. It provides helpers to
+convert between well ids (e.g. 'A01') and numeric indices.
+"""
+
 import re
 import string
 from tglow.utils.tglow_utils import build_well_index
 
 class ImageQuery:
-    """Bean that stores data relevant for fetching and saving multiwell images"""
+    """Container for plate/row/col/field/channel/plane identifiers.
+
+    Attributes
+    - `plate` (str): plate identifier (kept as string)
+    - `row` (str): row index (stringified integer)
+    - `col` (str): column index (stringified integer)
+    - `field` (str|None): field identifier
+    - `channel` (str|None): channel index (stringified integer)
+    - `plane` (str|None): z-plane index (stringified integer)
+    """
 
     ROW_TO_ID=build_well_index(invert=False, rows_as_string=True)
     ID_TO_ROW=build_well_index(invert=True, rows_as_string=True)
@@ -61,18 +77,27 @@ class ImageQuery:
     
     @classmethod
     def from_plate_well(cls, plate, well):
-        
+        """Create an `ImageQuery` from a plate id and a well string (e.g. 'A01').
+
+        Returns an `ImageQuery` with `field` set to ``None``.
+        """
         row, col = ImageQuery.well_id_to_index(well)
         return(cls(plate, row, col, None))
     
     def get_well_id(self):
+        """Return a string well id, e.g. 'A01'."""
         return f"{ImageQuery.ID_TO_ROW[self.row]}{self.col.zfill(2)}"
     
     def get_row_letter(self):
+        """Return the alphabetical row label for `row` (e.g. 'A')."""
         return f"{string.ascii_uppercase[int(self.row)-1]}"
     
     def well_id_to_index(well_id) -> tuple:
-        
+        """Convert a well id string (e.g. 'A01') to a (row, col) tuple.
+
+        Returns (row_index:int, col_index:int). Raises Exception on invalid
+        format.
+        """
         pat = re.compile(r'^([a-z])(\d+)', flags=re.IGNORECASE)
         match = re.match(pat, well_id)
         if match:
@@ -84,7 +109,12 @@ class ImageQuery:
         
         
     def to_string(self):
-        
+        """Return a compact string representation of the query.
+
+        Examples:
+        - field-only: ``r1c1ffield001``
+        - channel+plane: ``r1c1ffield001ch0p3``
+        """
         if (self.channel is None and self.plane is None):
             return f"r{self.row}c{self.col}f{self.field}"
         elif (self.channel is None and self.plane is not None):

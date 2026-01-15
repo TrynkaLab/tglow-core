@@ -1,35 +1,65 @@
 # Tglow: Core python component of tglow imaging pipeline.
 
-Core python package for the python component of the tglow HCI analysis pipeline. Mainly contains wrappers arround AICSImageIO to index folders in /plate/row/col/field.ome.tiff and contains code to read and write Revity Opera Phenix and Operetta XML files. It is a core dependency of the tglow-pipeline. 
+`tglow-core` is the Python core component of the Tglow high-content imaging (HCI)
+analysis pipeline. It provides utilities to index and read multi-well plate images
+and parsers for PerkinElmer (Opera Phenix / Operetta) exports. The package is
+used by the `tglow-pipeline` workflows to load, preprocess and write OME-TIFF
+images arranged in the common `/plate/row/col/field.ome.tiff` layout.
 
-NOTE: This uses the aicsimageio which has been EOL since December 2025. We plan to migrate to its successor bioIO in the near future.
+Key features
+- Index plate/row/col/field image layouts and return an `ImageQuery` object
+- Read and write CZYX / ZYX / YX image arrays via `AICSImageReader` /
+	`AICSImageWriter` (wrappers around `aicsimageio`)
+- Parse PerkinElmer `Index.xml` exports (`PerkinElmerParser`) and convert to a
+	simple Python-friendly index
+- Utilities for registration, flatfield correction and numeric conversions
 
 
-# Usage
 
-By itself it can be used to interface with raw Opera Phenix or Opera Operetta exports with the class tglow.io.PerkinElmerRawReader which takes an exports Index.xml or Index.xml.idx. /plate/row/col/field.ome.tiff can be read and written using tglow.io.AICSImageReader and and tglow.io.AICSImageWriter. The class tglow.io.ImageQuery is a bean used to store plate/row/col/field/channel/plane information and can be passed to AICSImageReader.read_stack(), AICSImageReader.read_image() and AICSImageWriter.write_stack().
+# Installation
 
 
-# Install instructions
-
-Create a new conda enviroment
-
-```
-conda create -n tglow python==3.10
+```bash
+conda create -n tglow python==3.10 
 conda activate tglow
-```
-
-Clone the repo into a suitable install dir, then:
-
-```
 git clone https://github.com/TrynkaLab/tglow-core
 cd tglow-core
 pip install -e .
 ```
 
-# Acknowledgements
-We thank Martin Prete who supplied an inital version of the XML parsing script on which we iterated.
+# Basic usage
 
+Build an index from a PerkinElmer export and read a single image:
+
+```python
+from tglow.io.tglow_io import PerkinElmerRawReader
+from tglow.io.image_query import ImageQuery
+
+reader = PerkinElmerRawReader('path/to/Index.xml', '/data/exports')
+iq = ImageQuery.from_plate_well('plate1', 'A01')
+image = reader.read_image(iq)  # returns a numpy array
+```
+
+Read and write an OME-TIFF stack organized by plate/row/col/field:
+
+```python
+from tglow.io.tglow_io import AICSImageReader, AICSImageWriter
+from tglow.io.image_query import ImageQuery
+
+reader = AICSImageReader('/data/plates')
+writer = AICSImageWriter('/output/plates')
+iq = ImageQuery('plate1', 1, 1, 'field001')
+stack = reader.read_stack(iq)
+writer.write_stack(stack, iq)
+```
+
+# Notes and migration to BioIO
+- This package currently wraps `aicsimageio`. As that project has been
+	superseded by newer tooling, consider migrating to `bioio` or equivalent in
+	future releases.
+
+# Acknowledgements
+- Martin Prete: initial XML parsing code adapted for this project
 
 # References
 - https://github.com/AllenCellModeling/aicsimageio

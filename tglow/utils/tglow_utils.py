@@ -1,3 +1,9 @@
+"""Utility helpers for tglow.
+
+This module contains small helpers for numeric conversions, serialization and
+image registration used across tglow I/O and processing code.
+"""
+
 import numpy as np
 import xml.etree.ElementTree as ET
 import re
@@ -16,9 +22,13 @@ log = logging.getLogger(__name__)
 log.setLevel(logging.DEBUG)
 
 
-
 # Encode numpy formats as JSON
 class NpEncoder(json.JSONEncoder):
+    """JSON encoder that understands numpy types.
+
+    Converts numpy integers/floats/arrays into native Python types so they can
+    be serialized by the standard `json` module.
+    """
     def default(self, obj):
         if isinstance(obj, np.integer):
             return int(obj)
@@ -31,6 +41,12 @@ class NpEncoder(json.JSONEncoder):
 # Get channel info easliy queriable in python as json format
 # adapted from Matin Prete's ParseXML.py
 def get_channel_channel_info(index_xml) -> dict:
+    """Extract channel metadata from a PerkinElmer `Index.xml` file.
+
+    Returns a dict keyed by channel id containing attributes such as name,
+    emission/excitation wavelengths and image size.
+    """
+    
     tree = ET.parse(index_xml)
     root = tree.getroot()
 
@@ -106,6 +122,7 @@ def build_well_index(upper=True, invert=False, rows_as_string=False) -> dict:
 
 # Covert a defualt dict tree to regular dict             
 def default_to_regular(d):
+    """Convert nested defaultdicts into regular dicts recursively."""
     if isinstance(d, collections.defaultdict):
         d = {k: default_to_regular(v) for k, v in d.items()}
     return d
@@ -113,7 +130,12 @@ def default_to_regular(d):
 
 # Convert a numpy 32bit float to a 16 bit int, clip values to zero and 65535
 def float_to_16bit_unint_scaled(matrix, max_value) -> np.array:
+    """Scale and convert a float matrix into uint16 using a provided max.
 
+    Values are scaled to the 0..65535 range and rounded to nearest integer.
+    Negative values are clipped to zero.
+    """
+    
     # Convert to float32 for security in dividing
     matrix = matrix.astype(np.float32)
     
@@ -153,6 +175,7 @@ def float_to_16bit_unint(matrix) -> np.array:
 
 
 def float_to_16bit_unint_inplace(matrix):
+    """In-place conversion of floats to uint16 with rounding and clipping."""
     matrix = np.rint(matrix, out=matrix)
     
     # Set negatives to zero and clip to max
@@ -181,7 +204,7 @@ def float_to_32bit_unint(matrix) -> np.array:
 
 # Convert a dict to a string for printing
 def dict_to_str(dict):
-    
+    """Return a compact string describing a dict's keys and value types."""
     if not dict == None:
         str="{"
         for key in dict.keys():
@@ -194,7 +217,11 @@ def dict_to_str(dict):
     
 # Based on: https://www.r-bloggers.com/2012/06/getting-numpy-data-into-r/
 def write_bin(matrix, file):
-    
+    """Write a numeric matrix to a simple binary format.
+
+    Format: two unsigned ints with rows, cols followed by column-major double values.
+    This is compatible with some R helpers used in previous projects.
+    """
     # Create a binary file
     binfile = open(file, 'wb')
     # And write out two integers with the row and column dimension
@@ -209,7 +236,16 @@ def write_bin(matrix, file):
 
 # Apply 2d registration 
 def apply_registration(stack, alignment_matrix):
-        
+    """Apply a 2D affine transformation to a 2D/3D/4D image stack.
+
+    Supports:
+    - 2D YX images
+    - 3D CYX or ZYX images
+    - 4D CZYX images
+    The transformation is applied per-plane or per-channel as appropriate and
+    preserves the input dtype/range via `preserve_range=True`.
+    """
+
     # Apply transformation matrix
     tform = transform.AffineTransform(matrix=alignment_matrix)
 
@@ -235,6 +271,7 @@ def apply_registration(stack, alignment_matrix):
                 #, preserve_range=True,
                 stack[i,j,:,:] = transform.warp(stack[i,j,:,:], tform, order=0, preserve_range=True)
     
+
     return stack
     
 # Apply 2d registration, using opencv instead of skimage
@@ -256,4 +293,10 @@ def apply_registration_cv(stack, alignment_matrix):
             for j in range(0, stack.shape[1]):
                 stack[i,j,:,:] = cv2.warpPerspective(stack[i,j,:,:], alignment_matrix, dsize=stack[i,j,:,:].shape)
     
+    """Apply an OpenCV perspective warp to 2D/3D/4D stacks.
+
+    The interface mirrors `apply_registration` but uses `cv2.warpPerspective`
+    for better performance on large datasets.
+    """
+
     return stack
