@@ -1,0 +1,48 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tglow-core"
+version = "0.1.0"
+description = "Python library and runners for tglow pipeline, interfacing with plate/row/col/field.ome.tiff images and Revity Opera Phenix and Operetta exports"
+readme = "README.md"
+requires-python = ">=3.10, <4"
+license = { text = "MIT" }
+authors = [{ name = "Trynka Lab" }]
+keywords = ["bioinformatics", "tglow"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3 :: Only",
+  "Topic :: Scientific/Engineering :: Bio-Informatics",
+]
+# Copy dependency lines from lib/requirements.txt into the dependencies array below
+dependencies = [
+    "aicsimageio>=4.14.0",
+    "numpy>=1.26.4",
+    "ome_model>=6.3.6",
+    "scipy<1.13",
+    "scikit-image>=0.20.0",
+    "pandas",
+    "tqdm",
+    "psutil",
+    "basicpy",
+    "matplotlib",
+    "opencv-python>=4.6.0",
+    "filelock"
+]
+
+[project.urls]
+Homepage = "https://github.com/TrynkaLab/tglow-core"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["tglow*"]
+exclude = ["tests", "docs"]

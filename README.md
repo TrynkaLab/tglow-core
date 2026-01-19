@@ -16,12 +16,15 @@ Key features
 
 
 
-# Installation
-
+# Installation 
+Generally I reccomend to use the PyPi version which can be installed as follows:
 
 ```bash
-conda create -n tglow python==3.10 
-conda activate tglow
+pip install tglow-core
+```
+
+Alternatively, you can install the latest version from github as follows:
+```bash
 git clone https://github.com/TrynkaLab/tglow-core
 cd tglow-core
 pip install -e .
