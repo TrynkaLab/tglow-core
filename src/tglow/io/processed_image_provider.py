@@ -29,12 +29,12 @@ def sigmoid(x, slope, bias):
 
 
 class ProcessedImageProvider():
-        """Builds processed image stacks for a plate.
+    """Builds processed image stacks for a plate.
 
-        The provider can merge channels from multiple plates (cycles), apply
-        flatfield corrections, registration transforms and optional masking
-        to produce a single multi-channel stack per well/field.
-        """
+    The provider can merge channels from multiple plates (cycles), apply
+    flatfield corrections, registration transforms and optional masking
+    to produce a single multi-channel stack per well/field.
+    """
         
     def __init__(self, path, plate, blacklist=None, plate_merge=None, registration_dir=None, flatfields=None, scaling_factors=None, mask_channels=None, mask_dir=None, mask_pattern=None, uint32=False, verbose=True, scaling_slope=0.001, scaling_bias=None):
         

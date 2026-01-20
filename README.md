@@ -4,16 +4,15 @@
 analysis pipeline. It provides utilities to index and read multi-well plate images
 and parsers for PerkinElmer (Opera Phenix / Operetta) exports. The package is
 used by the `tglow-pipeline` workflows to load, preprocess and write OME-TIFF
-images arranged in the common `/plate/row/col/field.ome.tiff` layout.
+images arranged in the common `/plate/row/col/field.ome.tiff` `CYZX`layout.
 
 Key features
-- Index plate/row/col/field image layouts and return an `ImageQuery` object
 - Read and write CZYX / ZYX / YX image arrays via `AICSImageReader` /
 	`AICSImageWriter` (wrappers around `aicsimageio`)
-- Parse PerkinElmer `Index.xml` exports (`PerkinElmerParser`) and convert to a
-	simple Python-friendly index
-- Utilities for registration, flatfield correction and numeric conversions
-
+- Parse Revity/PerkinElmer `Index.xml` exports (`PerkinElmerParser`) and convert to a simple Python-friendly index
+- Convert file heavy Revity/PerkinElmer exports to much lowe file number `/plate/row/col/field.ome.tiff` `CYZX`layout
+- Index and query plate/row/col/field image layouts using an `ImageQuery` object
+- Utilities for registration, flatfield correction and numeric conversions desinged to work with tglow-pipeline
 
 
 # Installation 
@@ -63,6 +62,10 @@ writer.write_stack(stack, iq)
 
 # Acknowledgements
 - Martin Prete: initial XML parsing code adapted for this project
+
+
+# Known issues
+The is an issue with BaSiCpy (https://github.com/peng-lab/BaSiCPy/issues/162) which means some old versions of hyperactive and gradient-free-optimizers need to be used. This also means an old pandas version needs to be installed, and the whole dependency chain becomes a bit of a pain. I will update this as soon as a new version comes out and migrate AICS to BioIO, but in the mean time these version should work for the pipeline.
 
 # References
 - https://github.com/AllenCellModeling/aicsimageio
