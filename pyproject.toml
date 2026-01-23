@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tglow-core"
-version = "0.1.1"
+version = "0.1.2"
 description = "Python library and runners for tglow pipeline, interfacing with plate/row/col/field.ome.tiff images and Revity Opera Phenix and Operetta exports"
 readme = "README.md"
 requires-python = ">=3.9, <4"
