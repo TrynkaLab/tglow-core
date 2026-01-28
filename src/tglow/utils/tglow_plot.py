@@ -1,6 +1,7 @@
 import numpy as np
 from skimage import exposure
 from matplotlib import pyplot as plt
+import pandas as pd
 
 # Take greyscale images and make a composite
 def composite_images(imgs, equalize=False, aggregator=np.mean):
@@ -103,4 +104,66 @@ def plot_histogram(data, filename, bins=30, title="Histogram", xlabel="Value", y
     plt.savefig(filename, dpi=300, bbox_inches='tight')
     
     # Close the plot to free up memory
+    plt.close()
+    
+    
+
+
+def plot_histogram_df(data, filename, bins=30, title_prefix="Histogram", xlabel="Value", ylabel="Frequency", ncols=3):
+    """
+    Create and save histograms for each column in a pandas DataFrame with mean and median lines.
+    
+    Parameters:
+    - data: pandas DataFrame, columns will be plotted individually
+    - filename: str, base filename (e.g., 'histograms' → 'histograms_col1.png', etc.)
+    - bins: int or sequence, number of bins or bin edges (default: 30)
+    - title_prefix: str, prefix for each histogram title
+    - xlabel: str, label for x-axis
+    - ylabel: str, label for y-axis
+    - ncols: int, number of columns in subplot grid (default: 3)
+    """
+    import numpy as np
+    import matplotlib.pyplot as plt
+    
+    # Select only numeric columns
+    numeric_cols = data.select_dtypes(include='number').columns
+    
+    if len(numeric_cols) == 0:
+        print("No numeric columns found in DataFrame")
+        return
+    
+    nrows = int(np.ceil(len(numeric_cols) / ncols))
+    
+    # Create figure with subplots
+    fig, axes = plt.subplots(nrows, ncols, figsize=(5*ncols, 4*nrows))
+    axes = axes.flatten() if nrows > 1 or ncols > 1 else [axes]
+    
+    # Plot histogram for each numeric column
+    for i, col in enumerate(numeric_cols):
+        col_data = data[col].dropna()
+        axes[i].hist(col_data, bins=bins, edgecolor='black', alpha=0.7)
+        
+        # Calculate mean and median
+        mean_val = col_data.mean()
+        median_val = col_data.median()
+        
+        # Add vertical lines for mean and median
+        axes[i].axvline(mean_val, color='red', linestyle='--', linewidth=2, label=f'Mean: {mean_val:.2f}')
+        axes[i].axvline(median_val, color='blue', linestyle='--', linewidth=2, label=f'Median: {median_val:.2f}')
+        
+        axes[i].set_title(f"{title_prefix}: {col}")
+        axes[i].set_xlabel(xlabel)
+        axes[i].set_ylabel(ylabel)
+        axes[i].legend()
+        #axes[i].grid(True, linestyle='--', alpha=0.7)
+    
+    # Hide unused subplots
+    for i in range(len(numeric_cols), len(axes)):
+        axes[i].set_visible(False)
+    
+    plt.tight_layout()
+    
+    # Save single combined figure
+    plt.savefig(f"{filename}.png", dpi=300, bbox_inches='tight')
+    plt.savefig(f"{filename}.pdf", format='pdf', bbox_inches='tight', dpi=300)
     plt.close()
