@@ -26,13 +26,13 @@ log.setLevel(logging.DEBUG)
 
 class PerkinElmerParser(object):
     """Parse PerkinElmer Index XML into a easy to access dictionary"""
-    def __init__(self, index_path):
+    def __init__(self, index_path,  new_name=None):
         self.index_file = index_path
         log.info(f"[+] Reading Index file: {index_path}")
         self.xml = ET.parse(index_path)
         self.NS = {"PE": re.findall(r'^{(.*)}',self.xml.getroot().tag)[0]}
         log.info(f"[+] Using namespace '{self.NS}'")
-        self.parse_plate()
+        self.parse_plate(new_name)
         self.parse_images()
         self.parse_wells()
         self.parse_channels()
@@ -232,24 +232,30 @@ class PerkinElmerParser(object):
             self.images[i['id']] = i
         log.info(f" └ Images: {len(self.images)}")
     
-    def parse_plate(self):
+    def parse_plate(self, new_name=None):
         """Get all PE Plate"""
         log.info(f"[+] Reading Plate metadata")
         plate = self.xml.find("./PE:Plates/PE:Plate", self.NS)
+        id_orig = plate.find("./PE:PlateID", self.NS).text
+        name_orig = plate.find("./PE:Name",self.NS).text
+        
         self.plate = {
-                "id": plate.find("./PE:PlateID", self.NS).text,
+                "id": new_name if new_name is not None else id_orig,
+                "id_orig": id_orig,
                 "measurement": plate.find("./PE:MeasurementID",self.NS).text,
                 "time": plate.find("./PE:MeasurementStartTime",self.NS).text,
-                "name": plate.find("./PE:Name",self.NS).text,
+                "name":new_name if new_name is not None else name_orig ,
+                "name_orig": name_orig,
                 "type": plate.find("./PE:PlateTypeName",self.NS).text,
                 "rows": int(plate.find("./PE:PlateRows",self.NS).text),
                 "cols": int(plate.find("./PE:PlateColumns",self.NS).text)
         }
-        log.info(f" ├ ID   = '{self.plate['id']}'")
-        log.info(f" ├ Type = '{self.plate['type']}'")
-        log.info(f" ├ Time = {self.plate['time']}")
-        log.info(f" ├ Rows = {self.plate['rows']}")
-        log.info(f" └ Cols = {self.plate['cols']}")
+        log.info(f" ├ ID    = '{self.plate['id']}'")
+        log.info(f" ├ ID og = '{self.plate['id_orig']}'")
+        log.info(f" ├ Type  = '{self.plate['type']}'")
+        log.info(f" ├ Time  = {self.plate['time']}")
+        log.info(f" ├ Rows  = {self.plate['rows']}")
+        log.info(f" └ Cols  = {self.plate['cols']}")
         
     def parse_wells(self):
         """Get all PE Wells"""
