@@ -58,8 +58,15 @@ class PerkinElmerParser(object):
                 img1=img
                 break
 
-        zres = abs(img0["position"]["z"]["value"] - img1["position"]["z"]["value"])
-        zunit = img1["position"]["z"]["unit"]
+        # Z resolution, in case there is only one planeme, we cannot estimate z resolution so set to 0
+        
+        if (img0 is None or img1 is None):
+            log.warning(f"Could not estimate z resolution, not enough planes found")
+            zres=0
+            zunit="m"
+        else:
+            zres = abs(img0["position"]["z"]["value"] - img1["position"]["z"]["value"])
+            zunit = img1["position"]["z"]["unit"]
     
         # Convert to microns
         if zunit == "m":
