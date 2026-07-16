@@ -157,21 +157,24 @@ class CompoundImageProvider():
         return(final_output)
 
     def fetch_image(self, q):
-            
-        if self.all_planes:
-            img = self.ac_reader.read_image(q)
-            if self.max_project:
-                img = np.max(img, axis=0)
+        try:
+            if self.all_planes:
+                img = self.ac_reader.read_image(q)
+                if self.max_project:
+                    img = np.max(img, axis=0)
+                else:
+                    return(list(img))
             else:
-                return(list(img))
-        else:
-            if self.planes is not None:
-                rplane = random.sample(self.planes, k=1)[0]
-            else:
-                rplane = random.sample(range(0, self.stack_dims["Z"][0]), k=1)[0]
-            q.plane = rplane
-            img = self.ac_reader.read_image(q)
-            
+                if self.planes is not None:
+                    rplane = random.sample(self.planes, k=1)[0]
+                else:
+                    rplane = random.sample(range(0, self.stack_dims["Z"][0]), k=1)[0]
+                q.plane = rplane
+                img = self.ac_reader.read_image(q)
+        except:
+            log.error(f"Something went wrong during reading for image {q.to_string()}")
+            log.error(q.to_relpath)
+            raise IOError(f"Error reading {q.to_string()}")
         return(img)
         
 

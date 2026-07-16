@@ -107,7 +107,15 @@ class ImageQuery:
             raise Exception(f"No match found for {well_id}, does not match ^[a-Z]\d+")
         return (int(ImageQuery.ROW_TO_ID[row]), col)
         
+    
+    def to_relpath(self):
         
+        if (self.field is not None):
+            return f"{self.plate}/{self.row}/{self.col}/{self.field}"
+        
+        return f"{self.plate}/{self.row}/{self.col}"
+    
+    
     def to_string(self):
         """Return a compact string representation of the query.
 
