@@ -15,17 +15,13 @@ import pickle
 
 from tglow.io.image_query import ImageQuery
 from tglow.io.tglow_io import AICSImageReader, BlacklistReader
-from tglow.utils.tglow_utils import apply_registration, apply_registration_cv, float_to_32bit_unint, float_to_16bit_unint
+from tglow.utils.tglow_utils import apply_registration, apply_registration_cv, float_to_32bit_unint, float_to_16bit_unint, sigmoid
 from basicpy import BaSiC
 
 # Logging
 logging.basicConfig(format='%(asctime)s %(message)s')
 log = logging.getLogger(__name__)
 log.setLevel(logging.DEBUG)
-
-
-def sigmoid(x, slope, bias):
-    return 1 / (1 + np.exp(-slope * (x - bias)))
 
 
 class ProcessedImageProvider():

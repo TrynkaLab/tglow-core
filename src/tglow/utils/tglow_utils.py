@@ -300,3 +300,53 @@ def apply_registration_cv(stack, alignment_matrix):
     """
 
     return stack
+
+
+def sigmoid(x, slope, bias):
+    return 1 / (1 + np.exp(-slope * (x - bias)))
+
+
+def rescale_stack(stack, factors, slopes=None, biases=None):
+    """Apply per-channel scale factors (optionally sigmoid-weighted) to a CZYX stack, returned as a new float32 array."""
+    return rescale_stack_inplace(stack.astype(np.float32, copy=True), factors, slopes, biases)
+
+
+def rescale_stack_inplace(stack, factors, slopes=None, biases=None):
+    """Apply per-channel scale factors (optionally sigmoid-weighted) to a CZYX stack in place, returned as float32."""
+    stack = stack.astype(np.float32, copy=False)
+
+    for channel in range(stack.shape[0]):
+        if channel not in factors:
+            log.warning(f"No scaling factor for channel {channel}, leaving unscaled")
+            continue
+
+        factor = factors[channel]
+
+        if biases is None or channel not in biases:
+            log.debug(f"Scaling channel {channel} by factor {factor}")
+            stack[channel] /= factor
+        else:
+            slope = slopes[channel]
+            bias = biases[channel]
+            log.debug(f"Scaling channel {channel} by factor {factor} weighted by sigmoid slope={slope} bias={bias}")
+
+            # Determine the weight of the scaling for each pixel value, this forms a "soft threshold"
+            # which means the scaling will be softenend for low intensities. scaling_bias
+            # sets the point where the sigmoid returns 0.5.
+            # scaling_slope controls the slope or smoothnes of the transition
+            # Setting it too smooth will have a bad impact on the data. Setting the bias too low is equivalent
+            # to scaling equally over all pixels. 
+            # Optimal values are pre-caclulated outside this script.
+            weight = sigmoid(stack[channel], slope, bias)
+                            
+            # This ensures when the weight is 0, no scaling is applied and when the weight
+            # is one, the scaling is equal to factor. It also ensures if scaling is >0<1
+            # it works in the way thats intended, i.e. the values get closer to 1 when the
+            # weight goes down
+            stack[channel] /= ((weight * (factor - 1)) + 1)
+
+    return stack
+    
+    
+
+
