@@ -8,11 +8,13 @@ import numpy as np
 import xml.etree.ElementTree as ET
 import re
 import json
+import os
 import string
 import collections
 import struct
 import logging
 import cv2
+from types import SimpleNamespace
 from skimage import transform
 
 
@@ -350,7 +352,41 @@ def rescale_stack_inplace(stack, factors, slopes=None, biases=None, verbose=True
             stack[channel] /= ((weight * (factor - 1)) + 1)
 
     return stack
-    
-    
+
+
+def load_flatfield_profile(model_dir):
+    """Read the flatfield/darkfield/baseline arrays from a `BaSiC.save_model` directory.
+
+    Reads `profiles.npz` directly instead of depending on basicpy, since only
+    the array data (not the fit settings) is needed downstream.
+    """
+    profiles = np.load(os.path.join(model_dir, "profiles.npz"))
+    return SimpleNamespace(flatfield=profiles["flatfield"], darkfield=profiles["darkfield"], baseline=profiles["baseline"])
+
+
+def save_flatfield_profile(model_dir, flatfield, darkfield, baseline=None, overwrite=False):
+    """Write flatfield/darkfield/baseline arrays in the same on-disk format as `BaSiC.save_model`.
+
+    Lets non-basicpy code (e.g. hand-computed flatfields) produce model directories that
+    remain loadable by both `load_flatfield_profile` and basicpy's own `BaSiC.load_model`.
+    """
+    if os.path.exists(model_dir):
+        if not overwrite:
+            raise FileExistsError("Model folder already exists.")
+    else:
+        os.makedirs(model_dir)
+
+    with open(os.path.join(model_dir, "settings.json"), "w") as fp:
+        json.dump({}, fp)
+
+    if baseline is None:
+        baseline = 1
+
+    np.savez(
+        os.path.join(model_dir, "profiles.npz"),
+        flatfield=np.array(flatfield),
+        darkfield=np.array(darkfield),
+        baseline=np.array(baseline),
+    )
 
 

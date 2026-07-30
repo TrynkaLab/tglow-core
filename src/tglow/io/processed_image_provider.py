@@ -12,26 +12,15 @@ import pandas as pd
 import numpy as np
 import os
 import pickle
-from types import SimpleNamespace
 
 from tglow.io.image_query import ImageQuery
 from tglow.io.tglow_io import AICSImageReader, BlacklistReader
-from tglow.utils.tglow_utils import apply_registration, apply_registration_cv, float_to_32bit_unint, float_to_16bit_unint, rescale_stack_inplace
+from tglow.utils.tglow_utils import apply_registration, apply_registration_cv, float_to_32bit_unint, float_to_16bit_unint, rescale_stack_inplace, load_flatfield_profile
 
 # Logging
 logging.basicConfig(format='%(asctime)s %(message)s')
 log = logging.getLogger(__name__)
 log.setLevel(logging.DEBUG)
-
-
-def _load_flatfield_profile(model_dir):
-    """Read the flatfield/darkfield arrays from a `BaSiC.save_model` directory.
-
-    Reads `profiles.npz` directly instead of depending on basicpy, since only
-    the flatfield and darkfield arrays are used downstream.
-    """
-    profiles = np.load(os.path.join(model_dir, "profiles.npz"))
-    return SimpleNamespace(flatfield=profiles["flatfield"], darkfield=profiles["darkfield"])
 
 
 class ProcessedImageProvider():
@@ -96,7 +85,7 @@ class ProcessedImageProvider():
                 for curp in self.plates + self.plates_merge:
                     if curp in keypair[0]:
                         log.info(f"Adding basicpy model: {keypair}")
-                        self.flatfields[keypair[0]] = _load_flatfield_profile(keypair[1])
+                        self.flatfields[keypair[0]] = load_flatfield_profile(keypair[1])
                     
         #--------------------------------------------------------------------- 
         # Build dict with scaling factors
