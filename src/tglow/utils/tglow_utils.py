@@ -306,29 +306,33 @@ def sigmoid(x, slope, bias):
     return 1 / (1 + np.exp(-slope * (x - bias)))
 
 
-def rescale_stack(stack, factors, slopes=None, biases=None):
+def rescale_stack(stack, factors, slopes=None, biases=None, verbose=True):
     """Apply per-channel scale factors (optionally sigmoid-weighted) to a CZYX stack, returned as a new float32 array."""
-    return rescale_stack_inplace(stack.astype(np.float32, copy=True), factors, slopes, biases)
+    return rescale_stack_inplace(stack.astype(np.float32, copy=True), factors, slopes, biases, verbose)
 
 
-def rescale_stack_inplace(stack, factors, slopes=None, biases=None):
+def rescale_stack_inplace(stack, factors, slopes=None, biases=None, verbose=True):
     """Apply per-channel scale factors (optionally sigmoid-weighted) to a CZYX stack in place, returned as float32."""
     stack = stack.astype(np.float32, copy=False)
 
     for channel in range(stack.shape[0]):
         if channel not in factors:
-            log.warning(f"No scaling factor for channel {channel}, leaving unscaled")
+            if verbose:
+                log.warning(f"No scaling factor for channel {channel}, leaving unscaled")
             continue
 
         factor = factors[channel]
 
         if biases is None or channel not in biases:
-            log.debug(f"Scaling channel {channel} by factor {factor}")
+            if verbose:
+                log.debug(f"Scaling channel {channel} by factor {factor}")
             stack[channel] /= factor
         else:
             slope = slopes[channel]
             bias = biases[channel]
-            log.debug(f"Scaling channel {channel} by factor {factor} weighted by sigmoid slope={slope} bias={bias}")
+            
+            if verbose:
+                log.debug(f"Scaling channel {channel} by factor {factor} weighted by sigmoid slope={slope} bias={bias}")
 
             # Determine the weight of the scaling for each pixel value, this forms a "soft threshold"
             # which means the scaling will be softenend for low intensities. scaling_bias

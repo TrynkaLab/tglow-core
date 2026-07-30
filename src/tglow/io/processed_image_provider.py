@@ -12,16 +12,26 @@ import pandas as pd
 import numpy as np
 import os
 import pickle
+from types import SimpleNamespace
 
 from tglow.io.image_query import ImageQuery
 from tglow.io.tglow_io import AICSImageReader, BlacklistReader
-from tglow.utils.tglow_utils import apply_registration, apply_registration_cv, float_to_32bit_unint, float_to_16bit_unint, sigmoid
-from basicpy import BaSiC
+from tglow.utils.tglow_utils import apply_registration, apply_registration_cv, float_to_32bit_unint, float_to_16bit_unint, rescale_stack_inplace
 
 # Logging
 logging.basicConfig(format='%(asctime)s %(message)s')
 log = logging.getLogger(__name__)
 log.setLevel(logging.DEBUG)
+
+
+def _load_flatfield_profile(model_dir):
+    """Read the flatfield/darkfield arrays from a `BaSiC.save_model` directory.
+
+    Reads `profiles.npz` directly instead of depending on basicpy, since only
+    the flatfield and darkfield arrays are used downstream.
+    """
+    profiles = np.load(os.path.join(model_dir, "profiles.npz"))
+    return SimpleNamespace(flatfield=profiles["flatfield"], darkfield=profiles["darkfield"])
 
 
 class ProcessedImageProvider():
@@ -86,7 +96,7 @@ class ProcessedImageProvider():
                 for curp in self.plates + self.plates_merge:
                     if curp in keypair[0]:
                         log.info(f"Adding basicpy model: {keypair}")
-                        self.flatfields[keypair[0]] = BaSiC.load_model(keypair[1])
+                        self.flatfields[keypair[0]] = _load_flatfield_profile(keypair[1])
                     
         #--------------------------------------------------------------------- 
         # Build dict with scaling factors
@@ -297,14 +307,14 @@ class ProcessedImageProvider():
                 
                 if str(bp_key) in self.flatfields.keys():
                     if self.verbose: log.info(f"Applying flatfield {bp_key} to: {iq.plate}/{iq.get_well_id()}/ch{str(row['channel'])}/f{iq.field}")                    
-                    basic_model = self.flatfields[str(bp_key)]
+                    flatfields = self.flatfields[str(bp_key)]
 
-                    basic_model.darkfield = basic_model.darkfield.astype(np.float32)
-                    basic_model.flatfield = basic_model.flatfield.astype(np.float32)
+                    flatfields.darkfield = flatfields.darkfield.astype(np.float32)
+                    flatfields.flatfield = flatfields.flatfield.astype(np.float32)
 
                     # modify in place
-                    stack[channel,:,:,:] -= basic_model.darkfield[np.newaxis,:,:]
-                    stack[channel,:,:,:] /= basic_model.flatfield[np.newaxis,:,:]
+                    stack[channel,:,:,:] -= flatfields.darkfield[np.newaxis,:,:]
+                    stack[channel,:,:,:] /= flatfields.flatfield[np.newaxis,:,:]
                                                     
             if self.verbose: log.info(f"Applied flatfieds to stack of shape {stack.shape}, {stack.dtype}")
         
@@ -375,48 +385,23 @@ class ProcessedImageProvider():
         #-------------------------------------------------
         # Apply scaling factors
         if self.scaling_factors is not None:
-            # Convert stack to 32 bit float
-            #stack = stack.astype(np.float32)
-            
+            factors, slopes, biases = {}, {}, {}
+
             for index, row in self.channel_index.iterrows():
                 channel = int(row["channel"])
                 scale_key = f"{row['ref_plate']}_ch{row['channel']}"
-                     
-                if str(scale_key) in self.scaling_factors.keys():
-                    factor = self.scaling_factors[scale_key]
-                    
-                    if self.verbose: log.debug(f"Scaling {scale_key} by factor {factor} for {row['plate']}, ch{channel}")
-                    #if self.verbose: log.debug(f"Pre-scale min/max {np.min(stack[channel,:,:,:])}/{np.max(stack[channel,:,:,:])} dtype:{stack[channel,:,:,:].dtype}")
-                    
-                    if self.scaling_biases is None:
-                        # Divide
-                        stack[channel,:,:,:] /= factor
-                    else:
-                        scaling_bias = self.scaling_biases[scale_key]
-                        scaling_slope = self.scaling_slopes[scale_key]
 
-                        if self.verbose: log.debug(f"Weighing scale factor with sigmoid for {scale_key} with slope, bias {scaling_slope}, {scaling_bias}")
-                        
-                        # Determine the weight of the scaling for each pixel value, this forms a "soft threshold"
-                        # which means the scaling will be softenend for low intensities. scaling_bias
-                        # sets the point where the sigmoid returns 0.5.
-                        # scaling_slope controls the slope or smoothnes of the transition
-                        # Setting it too smooth will have a bad impact on the data. Setting the bias too low is equivalent
-                        # to scaling equally over all pixels. 
-                        # Optimal values are pre-caclulated outside this script.
-                        scale_weight = sigmoid(stack[channel,:,:,:], scaling_slope, scaling_bias)
-                        
-                        # This ensures when the weight is 0, no scaling is applied and when the weight
-                        # is one, the scaling is equal to factor. It also ensures if scaling is >0<1
-                        # it works in the way thats intended, i.e. the values get closer to 1 when the
-                        # weight goes down
-                        stack[channel,:,:,:] /= ((scale_weight * (factor-1)) + 1)
-                        
-                    #if self.verbose: log.debug(f"Post-scale min/max {np.min(stack[channel,:,:,:])}/{np.max(stack[channel,:,:,:])} dtype:{stack[channel,:,:,:].dtype}")
-                else:
-                    if self.verbose: log.warning(f"Scale key {scale_key} not found! NOT APPLYING SCALING FOR: {row['plate']}, ch{channel}")
-            
-            
+                if str(scale_key) in self.scaling_factors.keys():
+                    factors[channel] = self.scaling_factors[scale_key]
+
+                    if self.scaling_biases is not None:
+                        biases[channel] = self.scaling_biases[scale_key]
+                        slopes[channel] = self.scaling_slopes[scale_key]
+
+            # Rescales a single stack, takes the factors, slots and biases as dicts with channel as key
+            stack = rescale_stack_inplace(stack, factors, slopes, biases, verbose=self.verbose)
+
+
         log.info(f"Processed stack min: {np.min(stack)} max: {np.max(stack)}")
         
         # Scale back to uint
@@ -430,11 +415,11 @@ class ProcessedImageProvider():
             #stack=float_to_16bit_unint(stack)
             
             stack = np.round(stack, out=stack)
-            log.debug("rounded")
+            #log.debug("rounded")
             stack = np.clip(stack, 0, np.iinfo(np.uint16).max, out=stack)
-            log.debug("clipped")
+            #log.debug("clipped")
             stack = stack.astype(np.uint16, copy=False)
-            log.debug("cast")
+            #log.debug("cast")
             log.debug(f"{stack.dtype}, max: {np.max(stack)}")
             #for channel in range(0,stack.shape[0]):
             #    if self.verbose: log.debug(f"Post clip min/max channel {channel} {np.min(stack[channel,:,:,:])}/{np.max(stack[channel,:,:,:])} dtype:{stack[channel,:,:,:].dtype}")
