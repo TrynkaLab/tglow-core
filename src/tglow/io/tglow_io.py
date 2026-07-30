@@ -558,12 +558,13 @@ class ControllistReader():
 class AICSImageWriter():
     """Writes image data from ome tiffs in a folder structure /plate/row/col/field.ome.tiff where field.ome.tiff is a CZYX array"""
     
-    def __init__(self, path, channel_names=None, physical_pixel_sizes=None) -> None:
+    def __init__(self, path, channel_names=None, physical_pixel_sizes=None, skip_imagestats=False) -> None:
         self.path = path
         self.channel_names=channel_names
         self.physical_pixel_sizes=physical_pixel_sizes
+        self.skip_imagestats = skip_imagestats
         self.image_stats_buffer = {}
-        
+
     
     def write_stack(self, stack, query, channel_names=None, physical_pixel_sizes=None, image_names=None, stats_only=False):
         """Write a CZYX array into the folder structure"""
@@ -596,14 +597,18 @@ class AICSImageWriter():
         log.debug(f"imn: {image_names}")
         log.debug(f"shp: {stack.shape}")
 
-        self.image_stats_buffer[query.field] = {}
-        
-        for channel in range(stack.shape[0]):
-            tmp = np.percentile(stack[channel],[0, 0.1, 1, 5, 25, 5, 75, 95, 99, 99.9, 99.99, 99.999, 99.9999, 99.99999, 100]).tolist()
-            tmp.append(np.mean(stack[channel]))
-            tmp.append(filters.threshold_otsu(stack[channel]))
-                        
-            self.image_stats_buffer[f"{query.field}"][channel] = tmp
+        if self.skip_imagestats:
+            if stats_only:
+                log.warning("stats_only=True but skip_imagestats is set on this writer; nothing to compute or write")
+        else:
+            self.image_stats_buffer[query.field] = {}
+
+            for channel in range(stack.shape[0]):
+                tmp = np.percentile(stack[channel],[0, 0.1, 1, 5, 25, 5, 75, 95, 99, 99.9, 99.99, 99.999, 99.9999, 99.99999, 100]).tolist()
+                tmp.append(np.mean(stack[channel]))
+                tmp.append(filters.threshold_otsu(stack[channel]))
+
+                self.image_stats_buffer[f"{query.field}"][channel] = tmp
 
         if not stats_only:
             OmeTiffWriter.save(stack,
@@ -615,7 +620,11 @@ class AICSImageWriter():
             )
 
     def write_image_stats(self, query):
-        
+
+        if not self.image_stats_buffer:
+            log.warning("No image stats to write (skip_imagestats is set or no stack has been written yet); skipping intensity_stats.tsv")
+            return
+
         outdir = f"{self.path}/{query.plate}/{ImageQuery.ID_TO_ROW[query.row]}/{query.col}"
         info_file=open(f"{outdir}/intensity_stats.tsv", 'w')
         
