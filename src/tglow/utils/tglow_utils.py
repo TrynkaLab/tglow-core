@@ -13,6 +13,7 @@ import string
 import collections
 import struct
 import logging
+import math
 import cv2
 from types import SimpleNamespace
 from skimage import transform
@@ -306,6 +307,32 @@ def apply_registration_cv(stack, alignment_matrix):
 
 def sigmoid(x, slope, bias):
     return 1 / (1 + np.exp(-slope * (x - bias)))
+
+
+def sigmoid_params(x1, x2, tol=1e-6):
+    """Compute the bias and slope for a logistic sigmoid given two x points and a tolerance.
+
+    Solves for the bias and slope such that the sigmoid evaluates to `tol` at
+    x1 and `1 - tol` at x2.
+
+    Args:
+        x1: X-value where the sigmoid should equal `tol`.
+        x2: X-value where the sigmoid should equal `1 - tol`.
+        tol: Distance from 0 and 1 the sigmoid should reach at x1/x2 (default 1e-6).
+
+    Returns:
+        Dict with keys "bias", "slope", and "tol".
+    """
+    y1 = 0 + tol
+    y2 = 1 - tol
+
+    log_y1 = math.log((1 / y1) - 1)
+    log_y2 = math.log((1 / y2) - 1)
+
+    bias = ((x1 * (log_y2 / log_y1)) - x2) / (-1 + (log_y2 / log_y1))
+    slope = (log_y2 - log_y1) / (x1 - x2)
+
+    return {"bias": bias, "slope": slope, "tol": tol}
 
 
 def rescale_stack(stack, factors, slopes=None, biases=None, verbose=True):
