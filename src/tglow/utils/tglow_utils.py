@@ -8,11 +8,14 @@ import numpy as np
 import xml.etree.ElementTree as ET
 import re
 import json
+import os
 import string
 import collections
 import struct
 import logging
+import math
 import cv2
+from types import SimpleNamespace
 from skimage import transform
 
 
@@ -300,3 +303,117 @@ def apply_registration_cv(stack, alignment_matrix):
     """
 
     return stack
+
+
+def sigmoid(x, slope, bias):
+    return 1 / (1 + np.exp(-slope * (x - bias)))
+
+
+def sigmoid_params(x1, x2, tol=1e-6):
+    """Compute the bias and slope for a logistic sigmoid given two x points and a tolerance.
+
+    Solves for the bias and slope such that the sigmoid evaluates to `tol` at
+    x1 and `1 - tol` at x2.
+
+    Args:
+        x1: X-value where the sigmoid should equal `tol`.
+        x2: X-value where the sigmoid should equal `1 - tol`.
+        tol: Distance from 0 and 1 the sigmoid should reach at x1/x2 (default 1e-6).
+
+    Returns:
+        Dict with keys "bias", "slope", and "tol".
+    """
+    y1 = 0 + tol
+    y2 = 1 - tol
+
+    log_y1 = math.log((1 / y1) - 1)
+    log_y2 = math.log((1 / y2) - 1)
+
+    bias = ((x1 * (log_y2 / log_y1)) - x2) / (-1 + (log_y2 / log_y1))
+    slope = (log_y2 - log_y1) / (x1 - x2)
+
+    return {"bias": bias, "slope": slope, "tol": tol}
+
+
+def rescale_stack(stack, factors, slopes=None, biases=None, verbose=True):
+    """Apply per-channel scale factors (optionally sigmoid-weighted) to a CZYX stack, returned as a new float32 array."""
+    return rescale_stack_inplace(stack.astype(np.float32, copy=True), factors, slopes, biases, verbose)
+
+
+def rescale_stack_inplace(stack, factors, slopes=None, biases=None, verbose=True):
+    """Apply per-channel scale factors (optionally sigmoid-weighted) to a CZYX stack in place, returned as float32."""
+    stack = stack.astype(np.float32, copy=False)
+
+    for channel in range(stack.shape[0]):
+        if channel not in factors:
+            if verbose:
+                log.warning(f"No scaling factor for channel {channel}, leaving unscaled")
+            continue
+
+        factor = factors[channel]
+
+        if biases is None or channel not in biases:
+            if verbose:
+                log.debug(f"Scaling channel {channel} by factor {factor}")
+            stack[channel] /= factor
+        else:
+            slope = slopes[channel]
+            bias = biases[channel]
+            
+            if verbose:
+                log.debug(f"Scaling channel {channel} by factor {factor} weighted by sigmoid slope={slope} bias={bias}")
+
+            # Determine the weight of the scaling for each pixel value, this forms a "soft threshold"
+            # which means the scaling will be softenend for low intensities. scaling_bias
+            # sets the point where the sigmoid returns 0.5.
+            # scaling_slope controls the slope or smoothnes of the transition
+            # Setting it too smooth will have a bad impact on the data. Setting the bias too low is equivalent
+            # to scaling equally over all pixels. 
+            # Optimal values are pre-caclulated outside this script.
+            weight = sigmoid(stack[channel], slope, bias)
+                            
+            # This ensures when the weight is 0, no scaling is applied and when the weight
+            # is one, the scaling is equal to factor. It also ensures if scaling is >0<1
+            # it works in the way thats intended, i.e. the values get closer to 1 when the
+            # weight goes down
+            stack[channel] /= ((weight * (factor - 1)) + 1)
+
+    return stack
+
+
+def load_flatfield_profile(model_dir):
+    """Read the flatfield/darkfield/baseline arrays from a `BaSiC.save_model` directory.
+
+    Reads `profiles.npz` directly instead of depending on basicpy, since only
+    the array data (not the fit settings) is needed downstream.
+    """
+    profiles = np.load(os.path.join(model_dir, "profiles.npz"))
+    return SimpleNamespace(flatfield=profiles["flatfield"], darkfield=profiles["darkfield"], baseline=profiles["baseline"])
+
+
+def save_flatfield_profile(model_dir, flatfield, darkfield, baseline=None, overwrite=False):
+    """Write flatfield/darkfield/baseline arrays in the same on-disk format as `BaSiC.save_model`.
+
+    Lets non-basicpy code (e.g. hand-computed flatfields) produce model directories that
+    remain loadable by both `load_flatfield_profile` and basicpy's own `BaSiC.load_model`.
+    """
+    if os.path.exists(model_dir):
+        if not overwrite:
+            raise FileExistsError("Model folder already exists.")
+    else:
+        os.makedirs(model_dir)
+
+    with open(os.path.join(model_dir, "settings.json"), "w") as fp:
+        json.dump({}, fp)
+
+    if baseline is None:
+        baseline = 1
+
+    np.savez(
+        os.path.join(model_dir, "profiles.npz"),
+        flatfield=np.array(flatfield),
+        darkfield=np.array(darkfield),
+        baseline=np.array(baseline),
+    )
+
+
