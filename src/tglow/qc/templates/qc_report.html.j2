@@ -136,12 +136,13 @@
   </table>
 
   <select id="ff-channel-select" onchange="showBlock('ff', this.value)">
-  {% for channel in flatfield.by_channel.keys() %}
-    <option value="{{ channel }}">Channel {{ channel + 1 }}</option>
+  {% for channel in flatfield.by_channel.keys() | sort %}
+    <option value="{{ channel }}">{{ flatfield.channel_labels[channel] }}</option>
   {% endfor %}
   </select>
 
-  {% for channel, entries in flatfield.by_channel.items() %}
+  {% for channel in flatfield.by_channel.keys() | sort %}
+  {% set entries = flatfield.by_channel[channel] %}
   <div class="channel-block{{ ' active' if loop.first else '' }}" data-group="ff" data-channel="{{ channel }}">
     <div class="grid">
     {% for entry in entries %}

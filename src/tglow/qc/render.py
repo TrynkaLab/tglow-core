@@ -87,7 +87,9 @@ def build_registration_tab(object_features, pattern, threshold, registration_ima
 
 def build_flatfield_tab(flatfields_dir, plate_ff_channels, ff_global_flatfield, ff_params, registration_manifest_path):
     channel_offsets = tab_flatfield.build_channel_offsets(registration_manifest_path, plate_ff_channels)
-    by_channel = tab_flatfield.build_flatfield_images(flatfields_dir, plate_ff_channels, ff_global_flatfield, channel_offsets)
+    by_channel, channel_labels = tab_flatfield.build_flatfield_images(
+        flatfields_dir, plate_ff_channels, ff_global_flatfield, channel_offsets
+    )
 
     # Convert the located PNG paths to inline data URIs (or None -> "not available")
     for entries in by_channel.values():
@@ -99,6 +101,7 @@ def build_flatfield_tab(flatfields_dir, plate_ff_channels, ff_global_flatfield, 
         "available": True,
         "params": ff_params,
         "by_channel": by_channel,
+        "channel_labels": channel_labels,
     }
 
 
