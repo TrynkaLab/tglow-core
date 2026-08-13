@@ -36,7 +36,9 @@ dependencies = [
     "matplotlib",
     "opencv-python>=4.6.0",
     "filelock",
-    "pyarrow"
+    "pyarrow",
+    "plotly",
+    "jinja2"
 ]
 
 [project.urls]
@@ -51,3 +53,6 @@ include-package-data = true
 where = ["src"]
 include = ["tglow*"]
 exclude = ["tests", "docs"]
+
+[tool.setuptools.package-data]
+tglow = ["qc/templates/*"]
