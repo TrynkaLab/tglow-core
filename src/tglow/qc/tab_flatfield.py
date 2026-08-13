@@ -65,30 +65,32 @@ def _file_hash(path):
 
 
 def build_channel_offsets(registration_manifest_path, plate_channels):
-    """Per-plate channel offset for merging cycle-local channel numbers into the
-    same sequential numbering measure_intensity/finalize use for the merged image
-    (reference plate's own channels first, then each query plate's, in the order
-    they're listed in the registration manifest, each contributing as many
-    channels as its own ff_channels count).
+    """Per-plate channel offset + cycle number for merging cycle-local channel
+    numbers into the same sequential numbering measure_intensity/finalize use for
+    the merged image (reference plate's own channels first, then each query
+    plate's, in the order they're listed in the registration manifest, each
+    contributing as many channels as its own ff_channels count).
 
-    Returns a dict plate -> offset (int). Plates not listed in any registration
-    row (or when registration_manifest_path is None) are absent, and callers
-    should treat a missing plate as offset 0.
+    Returns a dict plate -> {"offset": int, "cycle": int (1-indexed position in
+    its registration group - reference plate is cycle 1, first query is cycle 2,
+    etc.)}. Plates not listed in any registration row (or when
+    registration_manifest_path is None) are absent, and callers should treat a
+    missing plate as offset 0 / no cycle.
     """
     if registration_manifest_path is None or not os.path.isfile(registration_manifest_path):
         return {}
 
     manifest = pd.read_csv(registration_manifest_path, sep="\t", dtype=str)
 
-    offsets = {}
+    info = {}
     for _, row in manifest.iterrows():
         plate_order = [row["reference_plate"]] + row["query_plates"].split(",")
         cumulative = 0
-        for plate in plate_order:
-            offsets[plate] = cumulative
+        for cycle, plate in enumerate(plate_order, start=1):
+            info[plate] = {"offset": cumulative, "cycle": cycle}
             cumulative += len(plate_channels.get(plate, []))
 
-    return offsets
+    return info
 
 
 def build_flatfield_images(flatfields_dir, plate_channels, ff_global_flatfield, channel_offsets=None):
@@ -103,20 +105,28 @@ def build_flatfield_images(flatfields_dir, plate_channels, ff_global_flatfield, 
     (4, 5, ...) rather than as extra plates crammed into the first cycle's
     channel numbers (0-3).
 
-    Returns a dict keyed by (merged) channel, each holding a list of entries:
-    {"plates": [...], "label": ..., "flatfield_png": ..., "evaluation_png": ...}
-    (png fields are data-URI-ready file paths, or None if missing) - one entry
-    per distinct model (see module docstring for why dedup is by content hash
-    rather than by the ff_global_flatfield flag alone).
+    Returns (by_channel, channel_labels):
+    - by_channel: dict keyed by (merged) channel, each holding a list of entries:
+      {"plates": [...], "label": ..., "flatfield_png": ..., "evaluation_png": ...}
+      (png fields are data-URI-ready file paths, or None if missing) - one entry
+      per distinct model (see module docstring for why dedup is by content hash
+      rather than by the ff_global_flatfield flag alone).
+    - channel_labels: dict (merged) channel -> display label, "Cycle <N> -
+      Channel <local>" when channel_offsets carries cycle info, else plain
+      "Channel <merged+1>".
     """
     if flatfields_dir is None or not os.path.isdir(flatfields_dir):
-        return {}
+        return {}, {}
 
     channel_offsets = channel_offsets or {}
 
     by_channel = {}
+    channel_labels = {}
     for plate in sorted(plate_channels):
-        offset = channel_offsets.get(plate, 0)
+        plate_info = channel_offsets.get(plate, {})
+        offset = plate_info.get("offset", 0)
+        cycle = plate_info.get("cycle")
+
         for channel in plate_channels[plate]:
             model_dir = os.path.join(flatfields_dir, plate, f"{plate}_ch{channel}")
             flatfield_png = os.path.join(model_dir, FLATFIELD_PNG)
@@ -126,6 +136,10 @@ def build_flatfield_images(flatfields_dir, plate_channels, ff_global_flatfield, 
             evaluation_png = _find_first(model_dir, EVALUATION_PNG_GLOBS) if os.path.isdir(model_dir) else None
 
             merged_channel = offset + channel
+            channel_labels[merged_channel] = (
+                f"Cycle {cycle} - Channel {channel + 1}" if cycle is not None else f"Channel {merged_channel + 1}"
+            )
+
             entries = by_channel.setdefault(merged_channel, [])
             content_hash = _file_hash(flatfield_png) if ff_global_flatfield else None
 
@@ -145,4 +159,4 @@ def build_flatfield_images(flatfields_dir, plate_channels, ff_global_flatfield, 
             entry["label"] = ", ".join(entry["plates"])
             del entry["_hash"]
 
-    return by_channel
+    return by_channel, channel_labels

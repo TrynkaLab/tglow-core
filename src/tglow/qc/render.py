@@ -8,6 +8,7 @@ single file that works fully offline, with no external assets or server.
 """
 
 import logging
+from datetime import datetime
 from importlib import resources
 
 import jinja2
@@ -16,6 +17,7 @@ import pandas as pd
 
 from tglow.qc import aggregate, tab_decon, tab_flatfield, tab_intensity, tab_registration, tab_scaling
 from tglow.qc.assets import image_to_data_uri
+from tglow.qc.plate_layout import infer_plate_formats
 
 log = logging.getLogger(__name__)
 
@@ -60,9 +62,9 @@ def parse_manifest(manifest_path):
     return plate_ff_channels, plate_dc_psfs
 
 
-def build_general_tab(measurements, blacklist_df, registration_manifest_path, qc_plate_format):
+def build_general_tab(measurements, blacklist_df, registration_manifest_path, plate_formats):
     stats = aggregate.build_general_stats(measurements, blacklist_df, registration_manifest_path)
-    heatmaps = aggregate.build_cells_per_well_heatmaps(measurements.object_features, plate_format=qc_plate_format)
+    heatmaps = aggregate.build_cells_per_well_heatmaps(measurements.object_features, plate_formats)
     return {
         "stats": stats,
         "cells_per_well_html": {plate: fig_to_div(fig) for plate, fig in heatmaps.items()},
@@ -87,7 +89,9 @@ def build_registration_tab(object_features, pattern, threshold, registration_ima
 
 def build_flatfield_tab(flatfields_dir, plate_ff_channels, ff_global_flatfield, ff_params, registration_manifest_path):
     channel_offsets = tab_flatfield.build_channel_offsets(registration_manifest_path, plate_ff_channels)
-    by_channel = tab_flatfield.build_flatfield_images(flatfields_dir, plate_ff_channels, ff_global_flatfield, channel_offsets)
+    by_channel, channel_labels = tab_flatfield.build_flatfield_images(
+        flatfields_dir, plate_ff_channels, ff_global_flatfield, channel_offsets
+    )
 
     # Convert the located PNG paths to inline data URIs (or None -> "not available")
     for entries in by_channel.values():
@@ -99,6 +103,7 @@ def build_flatfield_tab(flatfields_dir, plate_ff_channels, ff_global_flatfield, 
         "available": True,
         "params": ff_params,
         "by_channel": by_channel,
+        "channel_labels": channel_labels,
     }
 
 
@@ -121,13 +126,13 @@ def build_decon_tab(decon_samples_dir, psf_paths):
     }
 
 
-def build_intensity_tab(object_features, pattern, threshold, qc_plate_format):
+def build_intensity_tab(object_features, pattern, threshold, plate_formats):
     channels = tab_intensity.available_channels(object_features)
     if not channels:
         return {"available": False}
 
     qced_df = tab_intensity.qced_cells(object_features, pattern, threshold)
-    heatmaps = tab_intensity.build_intensity_heatmaps(qced_df, channels, plate_format=qc_plate_format)
+    heatmaps = tab_intensity.build_intensity_heatmaps(qced_df, channels, plate_formats)
     distributions = tab_intensity.build_intensity_distributions(qced_df, channels)
 
     heatmaps_html = {
@@ -187,13 +192,20 @@ def build_report(
     plates = sorted(measurements.image_features["plate"].unique())
     blacklist_df = aggregate.load_blacklist(blacklist_path, plates=plates)
 
+    # Inferred once, from the full/unfiltered well population (image_features) -
+    # shared by every heatmap in the report so a given plate always renders at the
+    # same format (a qc-filtered subset used independently per-tab can under-infer
+    # a plate's true size if filtering happens to remove its higher rows/columns).
+    plate_formats = infer_plate_formats(measurements.image_features, override=qc_plate_format)
+
     context = {
-        "general": build_general_tab(measurements, blacklist_df, registration_manifest_path, qc_plate_format),
+        "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "general": build_general_tab(measurements, blacklist_df, registration_manifest_path, plate_formats),
         "registration": build_registration_tab(
             measurements.object_features, qc_registration_pattern, qc_regcor,
             registration_images_dir, qc_n_sample_registration,
         ),
-        "intensity": build_intensity_tab(measurements.object_features, qc_registration_pattern, qc_regcor, qc_plate_format),
+        "intensity": build_intensity_tab(measurements.object_features, qc_registration_pattern, qc_regcor, plate_formats),
         "flatfield": {"available": False},
         "decon": {"available": False},
         "scaling": {"available": False},

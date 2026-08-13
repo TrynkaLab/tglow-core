@@ -11,7 +11,7 @@ import re
 
 import plotly.graph_objects as go
 
-from tglow.qc.plate_layout import build_well_grid
+from tglow.qc.plate_layout import build_well_grid, style_heatmap_axes
 from tglow.qc.registration import filter_registration_correlation
 
 log = logging.getLogger(__name__)
@@ -33,8 +33,17 @@ def available_channels(object_features):
     return [c for c in channels if all(f"ch{c}__{stat}" in object_features.columns for stat in FEATURES.values())]
 
 
-def build_intensity_heatmaps(qced_df, channels, plate_format="auto"):
-    """dict[channel][feature_label][plate] -> Plotly heatmap of per-well mean(feature)."""
+def build_intensity_heatmaps(qced_df, channels, plate_formats):
+    """dict[channel][feature_label][plate] -> Plotly heatmap of per-well mean(feature).
+
+    `plate_formats` is the dict plate -> (n_rows, n_cols) from
+    plate_layout.infer_plate_formats - computed once (from the full, unfiltered
+    well population) and shared with every other heatmap in the report. Inferring
+    independently from qced_df here would be wrong: registration filtering can
+    remove every qc'ed cell from a plate's higher rows/columns, which would
+    under-infer that plate's format compared to e.g. Tab 1's cells-per-well
+    heatmap for the same plate.
+    """
     heatmaps = {}
 
     for channel in channels:
@@ -46,7 +55,7 @@ def build_intensity_heatmaps(qced_df, channels, plate_format="auto"):
             for plate, plate_df in qced_df.groupby("plate"):
                 well_means = plate_df.groupby(["row", "col", "well"])[col].mean().reset_index()
                 grid, row_labels, col_labels = build_well_grid(
-                    well_means, row_col="row", col_col="col", value_col=col, agg="mean", plate_format=plate_format
+                    well_means, row_col="row", col_col="col", value_col=col, agg="mean", plate_format=plate_formats[plate]
                 )
 
                 fig = go.Figure(data=go.Heatmap(
@@ -56,6 +65,7 @@ def build_intensity_heatmaps(qced_df, channels, plate_format="auto"):
                 ))
                 fig.update_yaxes(autorange="reversed")
                 fig.update_layout(title=f"Ch{channel} {label} intensity - plate {plate}", xaxis_title="Column", yaxis_title="Row")
+                style_heatmap_axes(fig)
                 heatmaps[channel][label][plate] = fig
 
     return heatmaps

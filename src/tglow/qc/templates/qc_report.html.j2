@@ -2,19 +2,30 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>tglow QC report</title>
+<title>TGlow QC report</title>
 <script>{{ plotlyjs }}</script>
 <style>
-  :root { color-scheme: light dark; }
+  :root { color-scheme: light dark; --tglow-accent: #0e9e86; }
   body { font-family: -apple-system, Segoe UI, Helvetica, Arial, sans-serif; margin: 0; padding: 0; }
-  header { padding: 1rem 1.5rem; border-bottom: 1px solid #8884; }
+  .page-head { position: sticky; top: 0; z-index: 100; }
+  header { background: var(--tglow-accent); color: #fff; }
+  header .inner { max-width: 1400px; margin: 0 auto; padding: 1rem 2rem; display: flex; align-items: baseline; gap: 0.75rem; flex-wrap: wrap; }
   header h1 { margin: 0; font-size: 1.3rem; }
-  nav { display: flex; flex-wrap: wrap; gap: 0.25rem; padding: 0.5rem 1rem; border-bottom: 1px solid #8884; position: sticky; top: 0; background: inherit; }
+  header .run-date { margin: 0; font-size: 0.85rem; opacity: 0.85; }
+  nav { border-bottom: 1px solid #8884; background: Canvas; }
+  nav .inner { max-width: 1400px; margin: 0 auto; padding: 0.5rem 2rem; display: flex; flex-wrap: wrap; gap: 0.25rem; }
   nav button { padding: 0.5rem 1rem; border: 1px solid #8884; border-radius: 6px; background: transparent; cursor: pointer; font-size: 0.95rem; }
-  nav button.active { background: #4c78a888; border-color: #4c78a8; }
-  main { padding: 1rem 1.5rem 3rem; }
+  nav button.active { background: color-mix(in srgb, var(--tglow-accent) 25%, transparent); border-color: var(--tglow-accent); }
+  main { max-width: 1400px; margin: 0 auto; padding: 1.5rem 2rem 3rem; box-sizing: border-box; }
   .tab-content { display: none; }
   .tab-content.active { display: block; }
+  .metrics { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 1.5rem; }
+  .metric { background: #8881; border-radius: 8px; padding: 0.6rem 1rem; min-width: 110px; }
+  .metric .value { font-size: 1.15rem; font-weight: 600; }
+  .metric .label { font-size: 0.72rem; opacity: 0.7; margin-top: 0.15rem; }
+  .metric.hero { background: color-mix(in srgb, var(--tglow-accent) 14%, transparent); border: 1px solid color-mix(in srgb, var(--tglow-accent) 45%, transparent); }
+  .metric.hero .value { font-size: 2.1rem; font-weight: 700; color: var(--tglow-accent); }
+  .metric.hero .label { font-size: 0.85rem; opacity: 0.85; }
   table.stats { border-collapse: collapse; margin-bottom: 1.5rem; }
   table.stats td { padding: 0.35rem 1rem; border-bottom: 1px solid #8883; }
   table.stats td.label { opacity: 0.75; }
@@ -39,43 +50,45 @@
 </head>
 <body>
 
-<header><h1>tglow QC report</h1></header>
+<div class="page-head">
+  <header><div class="inner"><h1>TGlow QC report</h1><p class="run-date">Generated {{ generated_at }}</p></div></header>
 
-<nav>
-  <button class="tab-btn active" data-tab="general">General QC</button>
-{% if registration.available %}
-  <button class="tab-btn" data-tab="registration">Registration</button>
-{% endif %}
-{% if flatfield.available %}
-  <button class="tab-btn" data-tab="flatfield">Flatfields</button>
-{% endif %}
-{% if decon.available %}
-  <button class="tab-btn" data-tab="decon">Decon</button>
-{% endif %}
-{% if intensity.available %}
-  <button class="tab-btn" data-tab="intensity">Intensities</button>
-{% endif %}
-{% if scaling.available %}
-  <button class="tab-btn" data-tab="scaling">Scaling factors</button>
-{% endif %}
-</nav>
+  <nav><div class="inner">
+    <button class="tab-btn active" data-tab="general">General QC</button>
+  {% if registration.available %}
+    <button class="tab-btn" data-tab="registration">Registration</button>
+  {% endif %}
+  {% if flatfield.available %}
+    <button class="tab-btn" data-tab="flatfield">Flatfields</button>
+  {% endif %}
+  {% if decon.available %}
+    <button class="tab-btn" data-tab="decon">Decon</button>
+  {% endif %}
+  {% if intensity.available %}
+    <button class="tab-btn" data-tab="intensity">Intensities</button>
+  {% endif %}
+  {% if scaling.available %}
+    <button class="tab-btn" data-tab="scaling">Scaling factors</button>
+  {% endif %}
+  </div></nav>
+</div>
 
 <main>
 
 <!-- ==================== Tab 1: General QC ==================== -->
 <section id="tab-general" class="tab-content active">
   <h2>General QC</h2>
-  <table class="stats">
-    <tr><td class="label">Images</td><td>{{ general.stats.n_images }}</td></tr>
-    <tr><td class="label">Cells</td><td>{{ general.stats.n_cells }}</td></tr>
-    <tr><td class="label">Fields per well</td><td>{{ general.stats.fields_per_well }}</td></tr>
-    <tr><td class="label">Plates</td><td>{{ general.stats.n_plates }}</td></tr>
-    <tr><td class="label">Wells</td><td>{{ general.stats.n_wells }}</td></tr>
-    <tr><td class="label">Blacklisted wells</td><td>{{ general.stats.n_blacklisted_wells }}</td></tr>
-    <tr><td class="label">Images without cells</td><td>{{ general.stats.n_images_without_cells }}</td></tr>
-    <tr><td class="label">Cycles</td><td>{{ general.stats.n_cycles if general.stats.n_cycles is not none else "n/a (no registration manifest)" }}</td></tr>
-    <tr><td class="label">Mean cells per well</td><td>{{ general.stats.mean_cells_per_well }}</td></tr>
-  </table>
+  <div class="metrics">
+    <div class="metric hero"><div class="value">{{ general.stats.n_cells }}</div><div class="label">Cells</div></div>
+    <div class="metric hero"><div class="value">{{ general.stats.mean_cells_per_well }}</div><div class="label">Mean cells / well</div></div>
+    <div class="metric"><div class="value">{{ general.stats.n_images }}</div><div class="label">Images</div></div>
+    <div class="metric"><div class="value">{{ general.stats.n_plates }}</div><div class="label">Plates</div></div>
+    <div class="metric"><div class="value">{{ general.stats.n_wells }}</div><div class="label">Wells</div></div>
+    <div class="metric"><div class="value">{{ general.stats.fields_per_well }}</div><div class="label">Fields / well</div></div>
+    <div class="metric"><div class="value">{{ general.stats.n_blacklisted_wells }}</div><div class="label">Blacklisted wells</div></div>
+    <div class="metric"><div class="value">{{ general.stats.n_images_without_cells }}</div><div class="label">Images without cells</div></div>
+    <div class="metric"><div class="value">{{ general.stats.n_cycles if general.stats.n_cycles is not none else "n/a" }}</div><div class="label">Cycles</div></div>
+  </div>
 
   <h3>Cells per well</h3>
   <div class="grid">
@@ -89,10 +102,10 @@
 {% if registration.available %}
 <section id="tab-registration" class="tab-content">
   <h2>Registration</h2>
-  <table class="stats">
-    <tr><td class="label">Total cells</td><td>{{ registration.stats.n_total_cells }}</td></tr>
-    <tr><td class="label">Qc'ed cells</td><td>{{ registration.stats.n_qced_cells }} ({{ registration.stats.pct_qced }}%)</td></tr>
-  </table>
+  <div class="metrics">
+    <div class="metric hero"><div class="value">{{ registration.stats.n_qced_cells }}</div><div class="label">Qc'ed cells ({{ registration.stats.pct_qced }}%)</div></div>
+    <div class="metric"><div class="value">{{ registration.stats.n_total_cells }}</div><div class="label">Total cells</div></div>
+  </div>
 
   {% if registration.density_html %}{{ registration.density_html | safe }}{% endif %}
 
@@ -136,12 +149,13 @@
   </table>
 
   <select id="ff-channel-select" onchange="showBlock('ff', this.value)">
-  {% for channel in flatfield.by_channel.keys() %}
-    <option value="{{ channel }}">Channel {{ channel + 1 }}</option>
+  {% for channel in flatfield.by_channel.keys() | sort %}
+    <option value="{{ channel }}">{{ flatfield.channel_labels[channel] }}</option>
   {% endfor %}
   </select>
 
-  {% for channel, entries in flatfield.by_channel.items() %}
+  {% for channel in flatfield.by_channel.keys() | sort %}
+  {% set entries = flatfield.by_channel[channel] %}
   <div class="channel-block{{ ' active' if loop.first else '' }}" data-group="ff" data-channel="{{ channel }}">
     <div class="grid">
     {% for entry in entries %}

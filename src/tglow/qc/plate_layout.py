@@ -50,27 +50,71 @@ def row_letter_to_index(row_letter):
     return idx - 1
 
 
-def build_well_grid(df, row_col="row", col_col="col", value_col=None, agg="mean", plate_format="auto"):
-    """Build a (n_rows, n_cols) grid of `value_col` (aggregated by `agg`) for one plate's wells.
-
-    `df` is expected to hold one row per well (or per-cell/per-image, in which case
-    it's aggregated to one value per well first). Row labels may be letters ('A',
-    'B', ...) or already-numeric row indices (as produced by ImageQuery, 1-indexed).
-    Returns (grid, row_labels, col_labels) - grid cells with no data are NaN.
-    """
-    rows = df[row_col].astype(str)
-    cols = df[col_col].astype(int)
+def _row_col_indices(rows, cols):
+    """0-indexed (row, col) Series pair - row labels may be letters ('A', 'B', ...)
+    or already-numeric row indices (as produced by ImageQuery, 1-indexed)."""
+    rows = rows.astype(str)
+    cols = cols.astype(int)
 
     if rows.str.isnumeric().all():
         row_idx = rows.astype(int) - 1
     else:
         row_idx = rows.map(row_letter_to_index)
 
-    col_idx = cols - 1
+    return row_idx, cols - 1
 
-    max_row = int(row_idx.max()) + 1
-    max_col = int(col_idx.max()) + 1
-    n_rows, n_cols = infer_plate_format(max_row, max_col, override=plate_format)
+
+def infer_plate_formats(df, plate_col="plate", row_col="row", col_col="col", override="auto"):
+    """Infer each plate's (n_rows, n_cols) format ONCE, from one authoritative/complete
+    well population (e.g. image_features, which lists every imaged field regardless
+    of any downstream cell-level filtering).
+
+    Every heatmap for a given plate should reuse this same dict rather than each
+    independently inferring from whatever (possibly filtered/partial) subset of rows
+    it happens to see - otherwise the same physical plate can infer to different
+    formats in different tabs (e.g. a qc-filtered subset that happens to lack any
+    surviving cells in the plate's higher rows/columns would under-infer the format).
+
+    Returns dict plate -> (n_rows, n_cols).
+    """
+    formats = {}
+    for plate, plate_df in df.groupby(plate_col):
+        row_idx, col_idx = _row_col_indices(plate_df[row_col], plate_df[col_col])
+        max_row = int(row_idx.max()) + 1
+        max_col = int(col_idx.max()) + 1
+        formats[plate] = infer_plate_format(max_row, max_col, override=override)
+    return formats
+
+
+def style_heatmap_axes(fig):
+    """Box border around the plot area, no internal gridlines (cleaner for a plate layout)."""
+    axis_style = dict(
+        showgrid=False, zeroline=False, showline=True, linewidth=1,
+        linecolor="rgba(136, 136, 136, 0.5)", mirror=True, ticks="",
+    )
+    fig.update_xaxes(**axis_style)
+    fig.update_yaxes(**axis_style)
+    return fig
+
+
+def build_well_grid(df, row_col="row", col_col="col", value_col=None, agg="mean", plate_format="auto"):
+    """Build a (n_rows, n_cols) grid of `value_col` (aggregated by `agg`) for one plate's wells.
+
+    `df` is expected to hold one row per well (or per-cell/per-image, in which case
+    it's aggregated to one value per well first). `plate_format` is either an
+    "auto"/None/int-string override (inferred from `df`'s own max row/col - see
+    infer_plate_format) or a precomputed (n_rows, n_cols) tuple (see
+    infer_plate_formats - preferred, so every heatmap for one plate agrees).
+    Returns (grid, row_labels, col_labels) - grid cells with no data are NaN.
+    """
+    row_idx, col_idx = _row_col_indices(df[row_col], df[col_col])
+
+    if isinstance(plate_format, tuple):
+        n_rows, n_cols = plate_format
+    else:
+        max_row = int(row_idx.max()) + 1
+        max_col = int(col_idx.max()) + 1
+        n_rows, n_cols = infer_plate_format(max_row, max_col, override=plate_format)
 
     grid = np.full((n_rows, n_cols), np.nan)
 
