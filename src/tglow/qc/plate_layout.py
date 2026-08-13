@@ -86,14 +86,26 @@ def infer_plate_formats(df, plate_col="plate", row_col="row", col_col="col", ove
     return formats
 
 
+# Fixed figure size for every plate heatmap, regardless of that plate's own
+# (n_rows, n_cols) - without an explicit size, Plotly auto-sizes each figure to
+# its own content, so different plate formats (or even the same format loaded in
+# a different browser layout pass) render at visibly different widget
+# dimensions. All 4 standard plate formats share the same 2:3 row:col ratio, so
+# one fixed width/height keeps cells square-ish across every format too.
+HEATMAP_WIDTH = 520
+HEATMAP_HEIGHT = 350
+
+
 def style_heatmap_axes(fig):
-    """Box border around the plot area, no internal gridlines (cleaner for a plate layout)."""
+    """Box border around the plot area, no internal gridlines, and a size fixed
+    across every plate/format (see HEATMAP_WIDTH/HEIGHT above)."""
     axis_style = dict(
         showgrid=False, zeroline=False, showline=True, linewidth=1,
         linecolor="rgba(136, 136, 136, 0.5)", mirror=True, ticks="",
     )
     fig.update_xaxes(**axis_style)
     fig.update_yaxes(**axis_style)
+    fig.update_layout(autosize=False, width=HEATMAP_WIDTH, height=HEATMAP_HEIGHT)
     return fig
 
 

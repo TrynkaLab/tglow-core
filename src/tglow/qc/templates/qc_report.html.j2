@@ -26,9 +26,17 @@
   .metric.hero { background: color-mix(in srgb, var(--tglow-accent) 14%, transparent); border: 1px solid color-mix(in srgb, var(--tglow-accent) 45%, transparent); }
   .metric.hero .value { font-size: 2.1rem; font-weight: 700; color: var(--tglow-accent); }
   .metric.hero .label { font-size: 0.85rem; opacity: 0.85; }
-  table.stats { border-collapse: collapse; margin-bottom: 1.5rem; }
-  table.stats td { padding: 0.35rem 1rem; border-bottom: 1px solid #8883; }
-  table.stats td.label { opacity: 0.75; }
+  .stats-box { background: rgba(136, 136, 136, 0.07); border: 1px solid rgba(136, 136, 136, 0.18); border-radius: 12px; padding: 1.1rem 1.25rem; margin-bottom: 1.5rem; }
+  .stats-box .metrics { margin-bottom: 0.75rem; }
+  .stats-box .metrics:last-child { margin-bottom: 0; }
+  table.stats { border-collapse: collapse; width: 100%; }
+  table.stats td { padding: 0.3rem 0.4rem; font-size: 0.85rem; border-bottom: 1px solid rgba(136, 136, 136, 0.18); }
+  table.stats td.label { opacity: 0.7; }
+  table.stats td:last-child { text-align: right; font-weight: 500; }
+  table.stats tr:last-child td { border-bottom: none; }
+  .two-col { display: flex; gap: 1.5rem; align-items: flex-start; flex-wrap: wrap; }
+  .two-col > div { flex: 1; min-width: 280px; }
+  .two-col > .col-fixed { flex: 0 0 260px; }
   .grid { display: flex; flex-wrap: wrap; gap: 1rem; }
   .grid-item { min-width: 320px; }
   select { padding: 0.3rem 0.6rem; font-size: 0.95rem; margin: 0 0.5rem 1rem 0; }
@@ -78,16 +86,20 @@
 <!-- ==================== Tab 1: General QC ==================== -->
 <section id="tab-general" class="tab-content active">
   <h2>General QC</h2>
-  <div class="metrics">
-    <div class="metric hero"><div class="value">{{ general.stats.n_cells }}</div><div class="label">Cells</div></div>
-    <div class="metric hero"><div class="value">{{ general.stats.mean_cells_per_well }}</div><div class="label">Mean cells / well</div></div>
-    <div class="metric"><div class="value">{{ general.stats.n_images }}</div><div class="label">Images</div></div>
-    <div class="metric"><div class="value">{{ general.stats.n_plates }}</div><div class="label">Plates</div></div>
-    <div class="metric"><div class="value">{{ general.stats.n_wells }}</div><div class="label">Wells</div></div>
-    <div class="metric"><div class="value">{{ general.stats.fields_per_well }}</div><div class="label">Fields / well</div></div>
-    <div class="metric"><div class="value">{{ general.stats.n_blacklisted_wells }}</div><div class="label">Blacklisted wells</div></div>
-    <div class="metric"><div class="value">{{ general.stats.n_images_without_cells }}</div><div class="label">Images without cells</div></div>
-    <div class="metric"><div class="value">{{ general.stats.n_cycles if general.stats.n_cycles is not none else "n/a" }}</div><div class="label">Cycles</div></div>
+  <div class="stats-box">
+    <div class="metrics">
+      <div class="metric hero"><div class="value">{{ general.stats.n_cells }}</div><div class="label">Cells</div></div>
+      <div class="metric hero"><div class="value">{{ general.stats.mean_cells_per_well }}</div><div class="label">Mean cells / well</div></div>
+    </div>
+    <table class="stats">
+      <tr><td class="label">Images</td><td>{{ general.stats.n_images }}</td></tr>
+      <tr><td class="label">Plates</td><td>{{ general.stats.n_plates }}</td></tr>
+      <tr><td class="label">Wells</td><td>{{ general.stats.n_wells }}</td></tr>
+      <tr><td class="label">Fields / well</td><td>{{ general.stats.fields_per_well }}</td></tr>
+      <tr><td class="label">Blacklisted wells</td><td>{{ general.stats.n_blacklisted_wells }}</td></tr>
+      <tr><td class="label">Images without cells</td><td>{{ general.stats.n_images_without_cells }}</td></tr>
+      <tr><td class="label">Cycles</td><td>{{ general.stats.n_cycles if general.stats.n_cycles is not none else "n/a" }}</td></tr>
+    </table>
   </div>
 
   <h3>Cells per well</h3>
@@ -102,9 +114,13 @@
 {% if registration.available %}
 <section id="tab-registration" class="tab-content">
   <h2>Registration</h2>
-  <div class="metrics">
-    <div class="metric hero"><div class="value">{{ registration.stats.n_qced_cells }}</div><div class="label">Qc'ed cells ({{ registration.stats.pct_qced }}%)</div></div>
-    <div class="metric"><div class="value">{{ registration.stats.n_total_cells }}</div><div class="label">Total cells</div></div>
+  <div class="stats-box">
+    <div class="metrics">
+      <div class="metric hero"><div class="value">{{ registration.stats.n_qced_cells }}</div><div class="label">Qc'ed cells ({{ registration.stats.pct_qced }}%)</div></div>
+    </div>
+    <table class="stats">
+      <tr><td class="label">Total cells</td><td>{{ registration.stats.n_total_cells }}</td></tr>
+    </table>
   </div>
 
   {% if registration.density_html %}{{ registration.density_html | safe }}{% endif %}
@@ -142,34 +158,40 @@
 {% if flatfield.available %}
 <section id="tab-flatfield" class="tab-content">
   <h2>Flatfields</h2>
-  <table class="stats">
-  {% for key, value in flatfield.params.items() %}
-    <tr><td class="label">{{ key }}</td><td>{{ value }}</td></tr>
-  {% endfor %}
-  </table>
+  <div class="two-col">
+    <div class="col-fixed">
+      <table class="stats">
+      {% for key, value in flatfield.params.items() %}
+        <tr><td class="label">{{ key }}</td><td>{{ value }}</td></tr>
+      {% endfor %}
+      </table>
+    </div>
 
-  <select id="ff-channel-select" onchange="showBlock('ff', this.value)">
-  {% for channel in flatfield.by_channel.keys() | sort %}
-    <option value="{{ channel }}">{{ flatfield.channel_labels[channel] }}</option>
-  {% endfor %}
-  </select>
+    <div>
+      <select id="ff-channel-select" onchange="showBlock('ff', this.value)">
+      {% for channel in flatfield.by_channel.keys() | sort %}
+        <option value="{{ channel }}">{{ flatfield.channel_labels[channel] }}</option>
+      {% endfor %}
+      </select>
 
-  {% for channel in flatfield.by_channel.keys() | sort %}
-  {% set entries = flatfield.by_channel[channel] %}
-  <div class="channel-block{{ ' active' if loop.first else '' }}" data-group="ff" data-channel="{{ channel }}">
-    <div class="grid">
-    {% for entry in entries %}
-      <div class="grid-item">
-        <h3>{{ entry.label }}</h3>
-        <p>Flatfield</p>
-        {% if entry.flatfield_data_uri %}<img class="qc-img" src="{{ entry.flatfield_data_uri }}">{% else %}<div class="missing">Flatfield image not available</div>{% endif %}
-        <p>Evaluation</p>
-        {% if entry.evaluation_data_uri %}<img class="qc-img" src="{{ entry.evaluation_data_uri }}">{% else %}<div class="missing">Evaluation image not available</div>{% endif %}
+      {% for channel in flatfield.by_channel.keys() | sort %}
+      {% set entries = flatfield.by_channel[channel] %}
+      <div class="channel-block{{ ' active' if loop.first else '' }}" data-group="ff" data-channel="{{ channel }}">
+        <div class="grid">
+        {% for entry in entries %}
+          <div class="grid-item">
+            <h3>{{ entry.label }}</h3>
+            <p>Flatfield</p>
+            {% if entry.flatfield_data_uri %}<img class="qc-img" src="{{ entry.flatfield_data_uri }}">{% else %}<div class="missing">Flatfield image not available</div>{% endif %}
+            <p>Evaluation</p>
+            {% if entry.evaluation_data_uri %}<img class="qc-img" src="{{ entry.evaluation_data_uri }}">{% else %}<div class="missing">Evaluation image not available</div>{% endif %}
+          </div>
+        {% endfor %}
+        </div>
       </div>
-    {% endfor %}
+      {% endfor %}
     </div>
   </div>
-  {% endfor %}
 </section>
 {% endif %}
 
@@ -234,14 +256,18 @@
   <div class="channel-block{{ ' active' if loop.first else '' }}" data-group="int-ch" data-channel="{{ channel }}">
     {% for feature in intensity.features %}
     <div class="feature-block{{ ' active' if loop.first else '' }}" data-group="int-feat-{{ channel }}" data-channel="{{ feature }}">
-      <h3>Per-plate well-mean heatmaps</h3>
-      <div class="grid">
-      {% for plate, html in intensity.heatmaps_html[channel][feature].items() %}
-        <div class="grid-item">{{ html | safe }}</div>
-      {% endfor %}
+      <div class="two-col">
+        <div>
+          <h3>Distribution</h3>
+          {{ intensity.distributions_html[channel][feature] | safe }}
+        </div>
+        <div>
+          <h3>Per-plate well-mean heatmaps</h3>
+          {% for plate, html in intensity.heatmaps_html[channel][feature].items() %}
+            {{ html | safe }}
+          {% endfor %}
+        </div>
       </div>
-      <h3>Distribution</h3>
-      {{ intensity.distributions_html[channel][feature] | safe }}
     </div>
     {% endfor %}
   </div>
