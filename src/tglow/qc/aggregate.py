@@ -11,7 +11,7 @@ import pandas as pd
 import plotly.graph_objects as go
 
 from tglow.qc.io import load_measurements
-from tglow.qc.plate_layout import build_well_grid
+from tglow.qc.plate_layout import build_well_grid, style_heatmap_axes
 
 log = logging.getLogger(__name__)
 
@@ -91,8 +91,13 @@ def build_general_stats(measurements, blacklist_df, registration_manifest_path):
     }
 
 
-def build_cells_per_well_heatmaps(object_features, plate_format="auto"):
-    """One Plotly heatmap figure per plate: cell count per well."""
+def build_cells_per_well_heatmaps(object_features, plate_formats):
+    """One Plotly heatmap figure per plate: cell count per well.
+
+    `plate_formats` is the dict plate -> (n_rows, n_cols) from
+    plate_layout.infer_plate_formats - computed once, shared with every other
+    heatmap in the report, so a given plate always renders at the same format.
+    """
     figures = {}
 
     cells_per_well = (
@@ -104,7 +109,7 @@ def build_cells_per_well_heatmaps(object_features, plate_format="auto"):
 
     for plate, plate_df in cells_per_well.groupby("plate"):
         grid, row_labels, col_labels = build_well_grid(
-            plate_df, row_col="row", col_col="col", value_col="n_cells", agg="sum", plate_format=plate_format
+            plate_df, row_col="row", col_col="col", value_col="n_cells", agg="sum", plate_format=plate_formats[plate]
         )
 
         fig = go.Figure(data=go.Heatmap(
@@ -117,6 +122,7 @@ def build_cells_per_well_heatmaps(object_features, plate_format="auto"):
         ))
         fig.update_yaxes(autorange="reversed")
         fig.update_layout(title=f"Cells per well - plate {plate}", xaxis_title="Column", yaxis_title="Row")
+        style_heatmap_axes(fig)
         figures[plate] = fig
 
     return figures

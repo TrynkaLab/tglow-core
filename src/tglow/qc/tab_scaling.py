@@ -20,17 +20,18 @@ def load_scaling_index(scaling_index_path):
 
 
 def build_scale_factor_barplot(scaling_index):
-    """Grouped barplot: x=plate, y=scale_factor, grouped/colored by channel."""
+    """Grouped barplot: x=channel, y=scale_factor, grouped/colored by plate."""
     fig = go.Figure()
-    for channel, channel_df in scaling_index.groupby("channel"):
+    for plate, plate_df in scaling_index.groupby("ref_plate"):
+        plate_df = plate_df.sort_values("channel")
         fig.add_trace(go.Bar(
-            x=channel_df["ref_plate"].astype(str),
-            y=channel_df["scale_factor"],
-            name=f"ch{channel}",
+            x=["ch" + str(c) for c in plate_df["channel"]],
+            y=plate_df["scale_factor"],
+            name=str(plate),
         ))
     fig.update_layout(
-        title="Scaling factor per plate",
-        xaxis_title="Plate",
+        title="Scaling factor per channel",
+        xaxis_title="Channel",
         yaxis_title="Scale factor",
         barmode="group",
     )
