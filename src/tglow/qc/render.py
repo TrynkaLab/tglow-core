@@ -85,8 +85,9 @@ def build_registration_tab(object_features, pattern, threshold, registration_ima
     }
 
 
-def build_flatfield_tab(flatfields_dir, plate_ff_channels, ff_global_flatfield, ff_params):
-    by_channel = tab_flatfield.build_flatfield_images(flatfields_dir, plate_ff_channels, ff_global_flatfield)
+def build_flatfield_tab(flatfields_dir, plate_ff_channels, ff_global_flatfield, ff_params, registration_manifest_path):
+    channel_offsets = tab_flatfield.build_channel_offsets(registration_manifest_path, plate_ff_channels)
+    by_channel = tab_flatfield.build_flatfield_images(flatfields_dir, plate_ff_channels, ff_global_flatfield, channel_offsets)
 
     # Convert the located PNG paths to inline data URIs (or None -> "not available")
     for entries in by_channel.values():
@@ -199,7 +200,9 @@ def build_report(
     }
 
     if show_flatfield:
-        context["flatfield"] = build_flatfield_tab(flatfields_dir, plate_ff_channels, ff_global_flatfield, ff_params or {})
+        context["flatfield"] = build_flatfield_tab(
+            flatfields_dir, plate_ff_channels, ff_global_flatfield, ff_params or {}, registration_manifest_path
+        )
 
     if show_decon:
         # Use the first plate with any PSFs configured as the representative PSF set
