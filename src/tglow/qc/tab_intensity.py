@@ -1,0 +1,76 @@
+"""Tab 5 ((unscaled) intensities) - per-plate/channel/feature well-mean heatmaps + distributions.
+
+Computed on qc'ed cells only (registration correlation >= qc_regcor, same filter as
+Tab 2/tab_registration.py) from measure_intensity's unscaled object_features output.
+Features are the min/mean/median/max per-channel stats measure_intensity writes as
+ch<N>__<stat> columns (median is stat "q50").
+"""
+
+import logging
+import re
+
+import plotly.graph_objects as go
+
+from tglow.qc.plate_layout import build_well_grid
+from tglow.qc.registration import filter_registration_correlation
+
+log = logging.getLogger(__name__)
+
+# Display label -> measure_intensity stat suffix
+FEATURES = {"min": "min", "mean": "mean", "median": "q50", "max": "max"}
+
+CHANNEL_COLUMN_RE = re.compile(r"^ch(\d+)__(.+)$")
+
+
+def qced_cells(object_features, pattern, threshold):
+    """Filter object_features down to qc'ed cells for intensity stats."""
+    return filter_registration_correlation(object_features, pattern, threshold)
+
+
+def available_channels(object_features):
+    """Channels (1-indexed, matching the ch<N>__ column convention) that have all 4 FEATURES present."""
+    channels = sorted({int(m.group(1)) for col in object_features.columns for m in [CHANNEL_COLUMN_RE.match(col)] if m})
+    return [c for c in channels if all(f"ch{c}__{stat}" in object_features.columns for stat in FEATURES.values())]
+
+
+def build_intensity_heatmaps(qced_df, channels, plate_format="auto"):
+    """dict[channel][feature_label][plate] -> Plotly heatmap of per-well mean(feature)."""
+    heatmaps = {}
+
+    for channel in channels:
+        heatmaps[channel] = {}
+        for label, stat in FEATURES.items():
+            col = f"ch{channel}__{stat}"
+            heatmaps[channel][label] = {}
+
+            for plate, plate_df in qced_df.groupby("plate"):
+                well_means = plate_df.groupby(["row", "col", "well"])[col].mean().reset_index()
+                grid, row_labels, col_labels = build_well_grid(
+                    well_means, row_col="row", col_col="col", value_col=col, agg="mean", plate_format=plate_format
+                )
+
+                fig = go.Figure(data=go.Heatmap(
+                    z=grid, x=col_labels, y=row_labels, colorscale="Viridis",
+                    colorbar=dict(title=label),
+                    hovertemplate="row %{y} col %{x}<br>" + label + ": %{z:.1f}<extra></extra>",
+                ))
+                fig.update_yaxes(autorange="reversed")
+                fig.update_layout(title=f"Ch{channel} {label} intensity - plate {plate}", xaxis_title="Column", yaxis_title="Row")
+                heatmaps[channel][label][plate] = fig
+
+    return heatmaps
+
+
+def build_intensity_distributions(qced_df, channels):
+    """dict[channel][feature_label] -> Plotly histogram of the raw per-cell values (all plates/wells)."""
+    distributions = {}
+
+    for channel in channels:
+        distributions[channel] = {}
+        for label, stat in FEATURES.items():
+            col = f"ch{channel}__{stat}"
+            fig = go.Figure(data=go.Histogram(x=qced_df[col].dropna(), nbinsx=50))
+            fig.update_layout(title=f"Ch{channel} {label} intensity distribution (qc'ed cells)", xaxis_title=label, yaxis_title="Count")
+            distributions[channel][label] = fig
+
+    return distributions

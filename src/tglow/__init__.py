@@ -7,6 +7,7 @@ PerkinElmer export formats.
 Public subpackages:
 - ``tglow.io``: image readers, writers and parsers
 - ``tglow.utils``: helper utilities for numeric conversions and registration
+- ``tglow.qc``: QC report data aggregation and HTML rendering
 
 Keep the top-level module lightweight; import specific components from
 submodules (e.g. ``from tglow.io import AICSImageReader``).
@@ -15,4 +16,5 @@ submodules (e.g. ``from tglow.io import AICSImageReader``).
 __all__ = [
 	"io",
 	"utils",
+	"qc",
 ]

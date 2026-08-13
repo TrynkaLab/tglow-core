@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>tglow QC report</title>
+<script>{{ plotlyjs }}</script>
+<style>
+  :root { color-scheme: light dark; }
+  body { font-family: -apple-system, Segoe UI, Helvetica, Arial, sans-serif; margin: 0; padding: 0; }
+  header { padding: 1rem 1.5rem; border-bottom: 1px solid #8884; }
+  header h1 { margin: 0; font-size: 1.3rem; }
+  nav { display: flex; flex-wrap: wrap; gap: 0.25rem; padding: 0.5rem 1rem; border-bottom: 1px solid #8884; position: sticky; top: 0; background: inherit; }
+  nav button { padding: 0.5rem 1rem; border: 1px solid #8884; border-radius: 6px; background: transparent; cursor: pointer; font-size: 0.95rem; }
+  nav button.active { background: #4c78a888; border-color: #4c78a8; }
+  main { padding: 1rem 1.5rem 3rem; }
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+  table.stats { border-collapse: collapse; margin-bottom: 1.5rem; }
+  table.stats td { padding: 0.35rem 1rem; border-bottom: 1px solid #8883; }
+  table.stats td.label { opacity: 0.75; }
+  .grid { display: flex; flex-wrap: wrap; gap: 1rem; }
+  .grid-item { min-width: 320px; }
+  select { padding: 0.3rem 0.6rem; font-size: 0.95rem; margin: 0 0.5rem 1rem 0; }
+  .plate-block { display: none; }
+  .plate-block.active { display: block; }
+  .channel-block { display: none; }
+  .channel-block.active { display: block; }
+  .feature-block { display: none; }
+  .feature-block.active { display: block; }
+  img.qc-img { max-width: 100%; height: auto; border: 1px solid #8884; border-radius: 4px; }
+  .missing { opacity: 0.6; font-style: italic; padding: 1rem; border: 1px dashed #8886; border-radius: 6px; display: inline-block; }
+  .carousel { max-width: 900px; }
+  .carousel-caption { opacity: 0.7; font-size: 0.9rem; margin-top: 0.35rem; }
+  .carousel-controls { margin-top: 0.5rem; }
+  .carousel-controls button { padding: 0.4rem 0.9rem; margin-right: 0.5rem; }
+  h2 { margin-top: 0; }
+  h3 { margin-top: 1.5rem; }
+</style>
+</head>
+<body>
+
+<header><h1>tglow QC report</h1></header>
+
+<nav>
+  <button class="tab-btn active" data-tab="general">General QC</button>
+{% if registration.available %}
+  <button class="tab-btn" data-tab="registration">Registration</button>
+{% endif %}
+{% if flatfield.available %}
+  <button class="tab-btn" data-tab="flatfield">Flatfields</button>
+{% endif %}
+{% if decon.available %}
+  <button class="tab-btn" data-tab="decon">Decon</button>
+{% endif %}
+{% if intensity.available %}
+  <button class="tab-btn" data-tab="intensity">Intensities</button>
+{% endif %}
+{% if scaling.available %}
+  <button class="tab-btn" data-tab="scaling">Scaling factors</button>
+{% endif %}
+</nav>
+
+<main>
+
+<!-- ==================== Tab 1: General QC ==================== -->
+<section id="tab-general" class="tab-content active">
+  <h2>General QC</h2>
+  <table class="stats">
+    <tr><td class="label">Images</td><td>{{ general.stats.n_images }}</td></tr>
+    <tr><td class="label">Cells</td><td>{{ general.stats.n_cells }}</td></tr>
+    <tr><td class="label">Fields per well</td><td>{{ general.stats.fields_per_well }}</td></tr>
+    <tr><td class="label">Plates</td><td>{{ general.stats.n_plates }}</td></tr>
+    <tr><td class="label">Wells</td><td>{{ general.stats.n_wells }}</td></tr>
+    <tr><td class="label">Blacklisted wells</td><td>{{ general.stats.n_blacklisted_wells }}</td></tr>
+    <tr><td class="label">Images without cells</td><td>{{ general.stats.n_images_without_cells }}</td></tr>
+    <tr><td class="label">Cycles</td><td>{{ general.stats.n_cycles if general.stats.n_cycles is not none else "n/a (no registration manifest)" }}</td></tr>
+    <tr><td class="label">Mean cells per well</td><td>{{ general.stats.mean_cells_per_well }}</td></tr>
+  </table>
+
+  <h3>Cells per well</h3>
+  <div class="grid">
+  {% for plate, html in general.cells_per_well_html.items() %}
+    <div class="grid-item">{{ html | safe }}</div>
+  {% endfor %}
+  </div>
+</section>
+
+<!-- ==================== Tab 2: Registration ==================== -->
+{% if registration.available %}
+<section id="tab-registration" class="tab-content">
+  <h2>Registration</h2>
+  <table class="stats">
+    <tr><td class="label">Total cells</td><td>{{ registration.stats.n_total_cells }}</td></tr>
+    <tr><td class="label">Qc'ed cells</td><td>{{ registration.stats.n_qced_cells }} ({{ registration.stats.pct_qced }}%)</td></tr>
+  </table>
+
+  {% if registration.density_html %}{{ registration.density_html | safe }}{% endif %}
+
+  <h3>Sample registration images</h3>
+  {% if registration.sample_images %}
+  <div class="carousel" id="reg-carousel">
+    <img class="qc-img" id="reg-carousel-img" src="{{ registration.sample_images[0].data_uri }}">
+    <div class="carousel-caption" id="reg-carousel-caption">{{ registration.sample_images[0].caption }} (1 / {{ registration.sample_images|length }})</div>
+    <div class="carousel-controls">
+      <button onclick="regCarousel(-1)">&larr; Prev</button>
+      <button onclick="regCarousel(1)">Next &rarr;</button>
+    </div>
+  </div>
+  <script>
+    const regImages = [
+    {% for img in registration.sample_images %}
+      {src: {{ img.data_uri | tojson }}, caption: {{ img.caption | tojson }}},
+    {% endfor %}
+    ];
+    let regIdx = 0;
+    function regCarousel(delta) {
+      regIdx = (regIdx + delta + regImages.length) % regImages.length;
+      document.getElementById('reg-carousel-img').src = regImages[regIdx].src;
+      document.getElementById('reg-carousel-caption').textContent = regImages[regIdx].caption + ' (' + (regIdx + 1) + ' / ' + regImages.length + ')';
+    }
+  </script>
+  {% else %}
+  <div class="missing">No registration sample images available (rg_plot may be disabled, or none were found)</div>
+  {% endif %}
+</section>
+{% endif %}
+
+<!-- ==================== Tab 3: Flatfields ==================== -->
+{% if flatfield.available %}
+<section id="tab-flatfield" class="tab-content">
+  <h2>Flatfields</h2>
+  <table class="stats">
+  {% for key, value in flatfield.params.items() %}
+    <tr><td class="label">{{ key }}</td><td>{{ value }}</td></tr>
+  {% endfor %}
+  </table>
+
+  <select id="ff-channel-select" onchange="showBlock('ff', this.value)">
+  {% for channel in flatfield.by_channel.keys() %}
+    <option value="{{ channel }}">Channel {{ channel + 1 }}</option>
+  {% endfor %}
+  </select>
+
+  {% for channel, entries in flatfield.by_channel.items() %}
+  <div class="channel-block{{ ' active' if loop.first else '' }}" data-group="ff" data-channel="{{ channel }}">
+    <div class="grid">
+    {% for entry in entries %}
+      <div class="grid-item">
+        <h3>{{ entry.label }}</h3>
+        <p>Flatfield</p>
+        {% if entry.flatfield_data_uri %}<img class="qc-img" src="{{ entry.flatfield_data_uri }}">{% else %}<div class="missing">Flatfield image not available</div>{% endif %}
+        <p>Evaluation</p>
+        {% if entry.evaluation_data_uri %}<img class="qc-img" src="{{ entry.evaluation_data_uri }}">{% else %}<div class="missing">Evaluation image not available</div>{% endif %}
+      </div>
+    {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+</section>
+{% endif %}
+
+<!-- ==================== Tab 4: Decon ==================== -->
+{% if decon.available %}
+<section id="tab-decon" class="tab-content">
+  <h2>Deconvolution</h2>
+
+  <select id="decon-channel-select" onchange="showBlock('decon', this.value)">
+  {% for channel in decon.channels %}
+    <option value="{{ channel }}">Channel {{ channel + 1 }}</option>
+  {% endfor %}
+  </select>
+
+  {% for channel in decon.channels %}
+  <div class="channel-block{{ ' active' if loop.first else '' }}" data-group="decon" data-channel="{{ channel }}">
+    <h3>PSF</h3>
+    <div class="grid">
+      {% if channel in decon.psf_html %}
+        {% if decon.psf_html[channel].xy %}<div class="grid-item">{{ decon.psf_html[channel].xy | safe }}</div>{% endif %}
+        {% if decon.psf_html[channel].zx %}<div class="grid-item">{{ decon.psf_html[channel].zx | safe }}</div>{% endif %}
+      {% else %}
+        <div class="missing">No PSF configured for this channel</div>
+      {% endif %}
+    </div>
+
+    <h3>Before / after (max projected, registration-merged)</h3>
+    <div class="grid">
+    {% if channel in decon.before_after %}
+      {% for sample in decon.before_after[channel] %}
+        <div class="grid-item">
+          <p>{{ sample.plate }} / {{ sample.well }}</p>
+          <img class="qc-img" src="{{ sample.data_uri }}">
+        </div>
+      {% endfor %}
+    {% else %}
+      <div class="missing">No before/after sample images available for this channel</div>
+    {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</section>
+{% endif %}
+
+<!-- ==================== Tab 5: Intensities ==================== -->
+{% if intensity.available %}
+<section id="tab-intensity" class="tab-content">
+  <h2>(Unscaled) Intensities</h2>
+
+  <select id="int-channel-select" onchange="showBlock('int-ch', this.value); syncIntensity();">
+  {% for channel in intensity.channels %}
+    <option value="{{ channel }}">Channel {{ channel }}</option>
+  {% endfor %}
+  </select>
+  <select id="int-feature-select" onchange="syncIntensity()">
+  {% for feature in intensity.features %}
+    <option value="{{ feature }}">{{ feature }}</option>
+  {% endfor %}
+  </select>
+
+  {% for channel in intensity.channels %}
+  <div class="channel-block{{ ' active' if loop.first else '' }}" data-group="int-ch" data-channel="{{ channel }}">
+    {% for feature in intensity.features %}
+    <div class="feature-block{{ ' active' if loop.first else '' }}" data-group="int-feat-{{ channel }}" data-channel="{{ feature }}">
+      <h3>Per-plate well-mean heatmaps</h3>
+      <div class="grid">
+      {% for plate, html in intensity.heatmaps_html[channel][feature].items() %}
+        <div class="grid-item">{{ html | safe }}</div>
+      {% endfor %}
+      </div>
+      <h3>Distribution</h3>
+      {{ intensity.distributions_html[channel][feature] | safe }}
+    </div>
+    {% endfor %}
+  </div>
+  {% endfor %}
+</section>
+{% endif %}
+
+<!-- ==================== Tab 6: Scaling factors ==================== -->
+{% if scaling.available %}
+<section id="tab-scaling" class="tab-content">
+  <h2>Scaling factors</h2>
+  {{ scaling.barplot_html | safe }}
+
+  <h3>Sigmoid curves</h3>
+  <div class="grid">
+  {% for channel, html in scaling.sigmoid_html.items() %}
+    <div class="grid-item">
+      <p>Channel {{ channel }}</p>
+      {{ html | safe }}
+    </div>
+  {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+</main>
+
+<script>
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+      window.dispatchEvent(new Event('resize'));
+    });
+  });
+
+  function showBlock(group, channel) {
+    document.querySelectorAll('[data-group="' + group + '"]').forEach(el => {
+      el.classList.toggle('active', el.dataset.channel === channel);
+    });
+    window.dispatchEvent(new Event('resize'));
+  }
+
+  function syncIntensity() {
+    const channel = document.getElementById('int-channel-select').value;
+    const feature = document.getElementById('int-feature-select').value;
+    showBlock('int-feat-' + channel, feature);
+  }
+</script>
+
+</body>
+</html>
