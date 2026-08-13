@@ -97,11 +97,14 @@ HEATMAP_HEIGHT = 350
 
 
 def style_heatmap_axes(fig):
-    """Box border around the plot area, no internal gridlines, and a size fixed
-    across every plate/format (see HEATMAP_WIDTH/HEIGHT above)."""
+    """Box border around the plot area, no internal gridlines, every row/column
+    label shown (Plotly's default category-axis behavior thins ticks when densely
+    packed - tickmode='linear'/dtick=1 forces one tick per category instead), and
+    a size fixed across every plate/format (see HEATMAP_WIDTH/HEIGHT above)."""
     axis_style = dict(
         showgrid=False, zeroline=False, showline=True, linewidth=1,
         linecolor="rgba(136, 136, 136, 0.5)", mirror=True, ticks="",
+        tickmode="linear", dtick=1, tickfont=dict(size=8),
     )
     fig.update_xaxes(**axis_style)
     fig.update_yaxes(**axis_style)
