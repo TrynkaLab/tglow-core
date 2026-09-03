@@ -4,10 +4,10 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tglow-core"
-version = "0.1.3"
+version = "0.2.0"
 description = "Python library and runners for tglow pipeline, interfacing with plate/row/col/field.ome.tiff images and Revity Opera Phenix and Operetta exports"
 readme = "README.md"
-requires-python = ">=3.9, <4"
+requires-python = ">=3.10, <4"
 license = { text = "MIT" }
 authors = [{ name = "Trynka Lab" }]
 keywords = ["bioinformatics", "tglow"]
@@ -23,7 +23,8 @@ classifiers = [
 # Copy dependency lines from lib/requirements.txt into the dependencies array below
 #     "scipy<1.13", I think this was needed for basicpy, so now relaxed this version requirement.
 dependencies = [
-    "aicsimageio>=4.14.0",
+    "bioio>=1.0",
+    "bioio-ome-tiff>=1.0",
     "numpy>=1.26.4",
     "ome_model>=6.3.6",
     "scipy",
@@ -40,6 +41,9 @@ dependencies = [
     "plotly",
     "jinja2"
 ]
+
+[project.optional-dependencies]
+test = ["pytest"]
 
 [project.urls]
 Homepage = "https://github.com/TrynkaLab/tglow-core"

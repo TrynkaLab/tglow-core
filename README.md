@@ -8,7 +8,7 @@ images arranged in the common `/plate/row/col/field.ome.tiff` (CYZX) layout.
 
 Key features
 - Read and write CYZX / ZYX / YX image arrays via `AICSImageReader` /
-	`AICSImageWriter` (wrappers around `aicsimageio`)
+	`AICSImageWriter` (wrappers around `bioio`)
 - Parse Revity/PerkinElmer `Index.xml` exports (`PerkinElmerParser`) and convert to a simple, Python-friendly index
 - Convert large Revity/PerkinElmer exports to a much lower number of `/plate/row/col/field.ome.tiff` files
 - Index and query plate/row/col/field image layouts using an `ImageQuery` object
@@ -56,11 +56,8 @@ stack = reader.read_stack(iq)
 writer.write_stack(stack, iq)
 ```
 
-# Notes and migration to BioIO
-- This package currently wraps `aicsimageio`. As that project has been superseded by newer tooling, consider migrating to `bioio` or equivalent in future releases.
-
 # Known issues
-There is a known issue with BaSiCpy (https://github.com/peng-lab/BaSiCPy/issues/162). This requires using specific, older versions of `hyperactive` and `gradient-free-optimizers`, which can in turn require an older `pandas` version. The same goes for `aicsimageio`. The dependency chain can be inconvenient; I'll update this project and migrate to BioIO libraries as newer releases become available.
+There is a known issue with BaSiCpy (https://github.com/peng-lab/BaSiCPy/issues/162). This requires using specific, older versions of `hyperactive` and `gradient-free-optimizers`, which can in turn require an older `pandas` version. The dependency chain can be inconvenient.
 
 # Acknowledgements
 - Martin Prete: initial XML parsing code adapted for this project

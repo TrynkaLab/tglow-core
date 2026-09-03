@@ -18,9 +18,8 @@ import logging
 import string
 import csv
 
-from aicsimageio import AICSImage
-from aicsimageio.writers import OmeTiffWriter
-from aicsimageio.readers.ome_tiff_reader import OmeTiffReader
+from bioio import BioImage
+from bioio_ome_tiff.writers import OmeTiffWriter
 
 from skimage import filters
 
@@ -386,7 +385,7 @@ class AICSImageReader():
         return self.wells[plate]
     
     def get_img(self, query):
-        img = AICSImage(f"{self.path}/{query.plate}/{ImageQuery.ID_TO_ROW[query.row]}/{query.col}/{query.field}{self.suffix}")
+        img = BioImage(f"{self.path}/{query.plate}/{ImageQuery.ID_TO_ROW[query.row]}/{query.col}/{query.field}{self.suffix}")
         return img
     
     def get_fields(self, query):
@@ -397,9 +396,7 @@ class AICSImageReader():
         if not isinstance(query, ImageQuery):
             raise TypeError("Query is not of type ImageQuery")    
         
-        #img = AICSImage(f"{self.path}/{query.plate}/{ImageQuery.ID_TO_ROW[query.row]}/{query.col}/{query.field}.ome.tiff")
-        #img = OmeTiffReader(f"{self.path}/{query.plate}/{ImageQuery.ID_TO_ROW[query.row]}/{query.col}/{query.field}{self.suffix}")
-        img = AICSImage(f"{self.path}/{query.plate}/{ImageQuery.ID_TO_ROW[query.row]}/{query.col}/{query.field}{self.suffix}")
+        img = BioImage(f"{self.path}/{query.plate}/{ImageQuery.ID_TO_ROW[query.row]}/{query.col}/{query.field}{self.suffix}")
 
         # The dask approach is slightly slower, BUT get_image_data reads everything and returns a view, which leads
         # to high memory usage as the data is kept in memory
@@ -415,8 +412,7 @@ class AICSImageReader():
 
         if (query.channel is None) and (query.plane is not None):
             # returns 3D CYX numpy array
-            #return img.get_image_data("CYX", T=0, Z=int(query.plane))
-            return img.get_image_data("CYX", T=0, Z=int(query.plane)).compute()
+            return img.get_image_data("CYX", T=0, Z=int(query.plane))
 
         if (query.channel is not None) and (query.plane is not None):
             # returns 2D YX numpy array
