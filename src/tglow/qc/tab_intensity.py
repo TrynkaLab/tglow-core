@@ -1,9 +1,9 @@
 """Tab 5 ((unscaled) intensities) - per-plate/channel/feature well-mean heatmaps + distributions.
 
-Computed on qc'ed cells only (registration correlation >= qc_regcor, same filter as
+Computed on qc'ed cells only (registration correlation >= sc_registration_thresh, same filter as
 Tab 2/tab_registration.py) from measure_intensity's unscaled object_features output.
 Features are the min/mean/median/max per-channel stats measure_intensity writes as
-ch<N>__<stat> columns (median is stat "q50").
+ch<N>__<stat> columns.
 """
 
 import logging
@@ -17,7 +17,7 @@ from tglow.qc.registration import filter_registration_correlation
 log = logging.getLogger(__name__)
 
 # Display label -> measure_intensity stat suffix
-FEATURES = {"min": "min", "mean": "mean", "median": "q50", "max": "max"}
+FEATURES = {"min": "min", "mean": "mean", "median": "median", "max": "max"}
 
 CHANNEL_COLUMN_RE = re.compile(r"^ch(\d+)__(.+)$")
 
