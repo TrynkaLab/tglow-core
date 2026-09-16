@@ -37,6 +37,8 @@
   table.data-table { border-collapse: collapse; width: 100%; margin-bottom: 1.5rem; }
   table.data-table th, table.data-table td { padding: 0.4rem 0.6rem; font-size: 0.85rem; border-bottom: 1px solid rgba(136, 136, 136, 0.18); text-align: left; }
   table.data-table th { font-weight: 600; opacity: 0.8; }
+  table.data-table th.sortable { cursor: pointer; user-select: none; }
+  table.data-table th.sortable:hover { text-decoration: underline; }
   .two-col { display: flex; gap: 1.5rem; align-items: flex-start; flex-wrap: wrap; }
   .two-col > div { flex: 1; min-width: 280px; }
   .two-col > .col-fixed { flex: 0 0 260px; }
@@ -306,20 +308,50 @@
 {% if debris.available %}
 <section id="tab-debris" class="tab-content">
   <h2>Debris</h2>
-  <p>An image passes for a channel when its debris percentage is &le; {{ debris.debris_max_pct }} and its threshold/mean ratio is &ge; {{ debris.ratio_min }}.</p>
+  <p>An image counts as "with debris" for a channel when its debris percentage is &gt; {{ debris.debris_max_pct }} or its threshold/mean ratio is &lt; {{ debris.ratio_min }}; "without debris" is the complement.</p>
 
-  <table class="data-table">
-    <tr><th>Channel</th><th>Images</th><th>Passed</th><th>% Passed</th><th>Mean debris % (passed)</th></tr>
-  {% for row in debris.pass_table %}
-    <tr>
-      <td>{{ row.channel }}</td>
-      <td>{{ row.n_total }}</td>
-      <td>{{ row.n_passed }}</td>
-      <td>{{ row.pct_passed }}%</td>
-      <td>{{ row.mean_debris_pct_passed if row.mean_debris_pct_passed is not none else "n/a" }}</td>
-    </tr>
-  {% endfor %}
-  </table>
+  <div class="two-col">
+    <div class="col-fixed">
+      <table class="stats">
+      {% for key, value in debris.params.items() %}
+        <tr><td class="label">{{ key }}</td><td>{{ value }}</td></tr>
+      {% endfor %}
+      </table>
+    </div>
+
+    <div>
+      <table class="data-table" id="debris-summary-table">
+        <thead>
+          <tr>
+            <th class="sortable" onclick="sortTable(this.closest('table'), 0, 'text')">Plate</th>
+            <th class="sortable" onclick="sortTable(this.closest('table'), 1, 'number')">Channel</th>
+            <th class="sortable" onclick="sortTable(this.closest('table'), 2, 'number')">Images</th>
+            <th class="sortable" onclick="sortTable(this.closest('table'), 3, 'number')">Images with debris</th>
+            <th class="sortable" onclick="sortTable(this.closest('table'), 4, 'number')">% with debris</th>
+            <th class="sortable" onclick="sortTable(this.closest('table'), 5, 'number')">Images without debris</th>
+            <th class="sortable" onclick="sortTable(this.closest('table'), 6, 'number')">% without debris</th>
+            <th class="sortable" onclick="sortTable(this.closest('table'), 7, 'number')">Mean threshold</th>
+            <th class="sortable" onclick="sortTable(this.closest('table'), 8, 'number')">Mean background</th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for row in debris.summary_table %}
+          <tr>
+            <td>{{ row.plate }}</td>
+            <td data-sort="{{ row.channel }}">{{ row.channel }}</td>
+            <td data-sort="{{ row.n_total }}">{{ row.n_total }}</td>
+            <td data-sort="{{ row.n_with_debris }}">{{ row.n_with_debris }}</td>
+            <td data-sort="{{ row.pct_with_debris }}">{{ row.pct_with_debris }}%</td>
+            <td data-sort="{{ row.n_without_debris }}">{{ row.n_without_debris }}</td>
+            <td data-sort="{{ row.pct_without_debris }}">{{ row.pct_without_debris }}%</td>
+            <td data-sort="{{ row.mean_threshold if row.mean_threshold is not none else -1 }}">{{ row.mean_threshold if row.mean_threshold is not none else "n/a" }}</td>
+            <td data-sort="{{ row.mean_background if row.mean_background is not none else -1 }}">{{ row.mean_background if row.mean_background is not none else "n/a" }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
 
   <h3>Debris % vs threshold/mean ratio</h3>
   <select id="debris-channel-select" onchange="showBlock('debris', this.value)">
@@ -331,6 +363,20 @@
   {% for channel in debris.scatter_html.keys() | sort %}
   <div class="channel-block{{ ' active' if loop.first else '' }}" data-group="debris" data-channel="{{ channel }}">
     {{ debris.scatter_html[channel] | safe }}
+
+    <h3>Highest-debris examples</h3>
+    {% if debris.sample_images.get(channel) %}
+    <div class="carousel" id="debris-carousel-{{ channel }}">
+      <img class="qc-img" id="debris-carousel-img-{{ channel }}" src="{{ debris.sample_images[channel][0].data_uri }}">
+      <div class="carousel-caption" id="debris-carousel-caption-{{ channel }}">{{ debris.sample_images[channel][0].caption }} (1 / {{ debris.sample_images[channel]|length }})</div>
+      <div class="carousel-controls">
+        <button onclick="debrisCarousel({{ channel }}, -1)">&larr; Prev</button>
+        <button onclick="debrisCarousel({{ channel }}, 1)">Next &rarr;</button>
+      </div>
+    </div>
+    {% else %}
+    <div class="missing">No debris sample images available for this channel</div>
+    {% endif %}
   </div>
   {% endfor %}
 </section>
@@ -360,6 +406,46 @@
     const channel = document.getElementById('int-channel-select').value;
     const feature = document.getElementById('int-feature-select').value;
     showBlock('int-feat-' + channel, feature);
+  }
+
+  {% if debris.available %}
+  const debrisImages = {
+  {% for channel, images in debris.sample_images.items() %}
+    {{ channel }}: [
+    {% for img in images %}
+      {src: {{ img.data_uri | tojson }}, caption: {{ img.caption | tojson }}},
+    {% endfor %}
+    ],
+  {% endfor %}
+  };
+  const debrisIdx = {};
+  function debrisCarousel(channel, delta) {
+    const images = debrisImages[channel];
+    if (!images || !images.length) return;
+    const next = ((debrisIdx[channel] || 0) + delta + images.length) % images.length;
+    debrisIdx[channel] = next;
+    document.getElementById('debris-carousel-img-' + channel).src = images[next].src;
+    document.getElementById('debris-carousel-caption-' + channel).textContent = images[next].caption + ' (' + (next + 1) + ' / ' + images.length + ')';
+  }
+  {% endif %}
+
+  function sortTable(table, col, type) {
+    const tbody = table.tBodies[0];
+    const rows = Array.from(tbody.rows);
+    const asc = !(table.dataset.sortCol == col && table.dataset.sortDir === 'asc');
+
+    rows.sort((a, b) => {
+      let va = a.cells[col].dataset.sort ?? a.cells[col].textContent;
+      let vb = b.cells[col].dataset.sort ?? b.cells[col].textContent;
+      if (type === 'number') { va = parseFloat(va); vb = parseFloat(vb); }
+      if (va < vb) return asc ? -1 : 1;
+      if (va > vb) return asc ? 1 : -1;
+      return 0;
+    });
+
+    rows.forEach(r => tbody.appendChild(r));
+    table.dataset.sortCol = col;
+    table.dataset.sortDir = asc ? 'asc' : 'desc';
   }
 </script>
 

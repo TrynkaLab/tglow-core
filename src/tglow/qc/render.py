@@ -167,20 +167,24 @@ def build_scaling_tab(scaling_index_path):
     }
 
 
-def build_debris_tab(image_features, debris_max_pct, ratio_min):
+def build_debris_tab(image_features, debris_max_pct, ratio_min, debris_samples_dir):
     channels = tab_debris.available_channels(image_features)
     if not channels:
         return {"available": False}
 
     scatter_plots = tab_debris.build_debris_scatter_plots(image_features, channels, debris_max_pct, ratio_min)
-    pass_table = tab_debris.build_debris_pass_table(image_features, channels, debris_max_pct, ratio_min)
+    summary_table = tab_debris.build_debris_summary_table(image_features, channels, debris_max_pct, ratio_min)
+    params = tab_debris.build_debris_param_summary(image_features, debris_max_pct, ratio_min)
+    sample_images = tab_debris.sample_debris_images(debris_samples_dir)
 
     return {
         "available": True,
         "debris_max_pct": debris_max_pct,
         "ratio_min": ratio_min,
-        "pass_table": pass_table,
+        "params": params,
+        "summary_table": summary_table,
         "scatter_html": {channel: fig_to_div(fig) for channel, fig in scatter_plots.items()},
+        "sample_images": {channel: sample_images.get(channel, []) for channel in channels},
     }
 
 
@@ -205,6 +209,7 @@ def build_report(
     decon_samples_dir=None,
     show_scaling=False,
     scaling_index_path=None,
+    debris_samples_dir=None,
 ):
     """Build the QC report HTML and write it to output_path. See bin/render_qc_report.py for the CLI."""
     measurements = aggregate.MeasurementData(measurements_dir)
@@ -227,7 +232,7 @@ def build_report(
             registration_images_dir, qc_n_sample_registration,
         ),
         "intensity": build_intensity_tab(measurements.object_features, qc_registration_pattern, qc_regcor, plate_formats),
-        "debris": build_debris_tab(measurements.image_features, qc_debris_max_pct, qc_debris_min_ratio),
+        "debris": build_debris_tab(measurements.image_features, qc_debris_max_pct, qc_debris_min_ratio, debris_samples_dir),
         "flatfield": {"available": False},
         "decon": {"available": False},
         "scaling": {"available": False},
