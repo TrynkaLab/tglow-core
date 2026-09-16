@@ -267,16 +267,6 @@
     <div class="tab-main">
       {% for channel in decon.channels %}
       <div class="channel-block{{ ' active' if loop.first else '' }}" data-group="decon" data-channel="{{ channel }}">
-        <h3>PSF</h3>
-        <div class="grid">
-          {% if channel in decon.psf_html %}
-            {% if decon.psf_html[channel].xy %}<div class="grid-item">{{ decon.psf_html[channel].xy | safe }}</div>{% endif %}
-            {% if decon.psf_html[channel].zx %}<div class="grid-item">{{ decon.psf_html[channel].zx | safe }}</div>{% endif %}
-          {% else %}
-            <div class="missing">No PSF configured for this channel</div>
-          {% endif %}
-        </div>
-
         <h3>Before / after (max projected, registration-merged)</h3>
         <div class="grid">
         {% if channel in decon.before_after %}
@@ -398,23 +388,21 @@
       <table class="data-table" id="debris-summary-table">
         <thead>
           <tr>
-            <th class="sortable" onclick="sortTable(this.closest('table'), 0, 'text')">Plate</th>
-            <th class="sortable" onclick="sortTable(this.closest('table'), 1, 'number')">Channel</th>
-            <th class="sortable" onclick="sortTable(this.closest('table'), 2, 'number')">Images</th>
-            <th class="sortable" onclick="sortTable(this.closest('table'), 3, 'number')">Untrustworthy</th>
-            <th class="sortable" onclick="sortTable(this.closest('table'), 4, 'number')">% untrustworthy</th>
-            <th class="sortable" onclick="sortTable(this.closest('table'), 5, 'number')">Trustworthy</th>
-            <th class="sortable" onclick="sortTable(this.closest('table'), 6, 'number')">% trustworthy</th>
-            <th class="sortable" onclick="sortTable(this.closest('table'), 7, 'number')">Uncertain / high debris</th>
-            <th class="sortable" onclick="sortTable(this.closest('table'), 8, 'number')">% uncertain</th>
-            <th class="sortable" onclick="sortTable(this.closest('table'), 9, 'number')">Mean threshold</th>
-            <th class="sortable" onclick="sortTable(this.closest('table'), 10, 'number')">Mean background</th>
+            <th class="sortable" onclick="sortTable(this.closest('table'), 0, 'number')">Channel</th>
+            <th class="sortable" onclick="sortTable(this.closest('table'), 1, 'number')">Images</th>
+            <th class="sortable" onclick="sortTable(this.closest('table'), 2, 'number')">Untrustworthy</th>
+            <th class="sortable" onclick="sortTable(this.closest('table'), 3, 'number')">% untrustworthy</th>
+            <th class="sortable" onclick="sortTable(this.closest('table'), 4, 'number')">Trustworthy</th>
+            <th class="sortable" onclick="sortTable(this.closest('table'), 5, 'number')">% trustworthy</th>
+            <th class="sortable" onclick="sortTable(this.closest('table'), 6, 'number')">Uncertain / high debris</th>
+            <th class="sortable" onclick="sortTable(this.closest('table'), 7, 'number')">% uncertain</th>
+            <th class="sortable" onclick="sortTable(this.closest('table'), 8, 'number')">Mean threshold</th>
+            <th class="sortable" onclick="sortTable(this.closest('table'), 9, 'number')">Mean background</th>
           </tr>
         </thead>
         <tbody>
         {% for row in debris.summary_table %}
           <tr>
-            <td>{{ row.plate }}</td>
             <td data-sort="{{ row.channel }}">{{ row.channel }}</td>
             <td data-sort="{{ row.n_total }}">{{ row.n_total }}</td>
             <td data-sort="{{ row.n_untrustworthy }}">{{ row.n_untrustworthy }}</td>
@@ -436,17 +424,31 @@
         {{ debris.scatter_html[channel] | safe }}
 
         <h3>Uncertain / high-debris examples</h3>
-        {% if debris.sample_images.get(channel) %}
-        <div class="carousel" id="debris-carousel-{{ channel }}">
-          <img class="qc-img" id="debris-carousel-img-{{ channel }}" src="{{ debris.sample_images[channel][0].data_uri }}">
-          <div class="carousel-caption" id="debris-carousel-caption-{{ channel }}">{{ debris.sample_images[channel][0].caption }} (1 / {{ debris.sample_images[channel]|length }})</div>
+        {% if debris.sample_images_uncertain.get(channel) %}
+        <div class="carousel" id="debris-carousel-uncertain-{{ channel }}">
+          <img class="qc-img" id="debris-carousel-img-uncertain-{{ channel }}" src="{{ debris.sample_images_uncertain[channel][0].data_uri }}">
+          <div class="carousel-caption" id="debris-carousel-caption-uncertain-{{ channel }}">{{ debris.sample_images_uncertain[channel][0].caption }} (1 / {{ debris.sample_images_uncertain[channel]|length }})</div>
           <div class="carousel-controls">
-            <button onclick="debrisCarousel({{ channel }}, -1)">&larr; Prev</button>
-            <button onclick="debrisCarousel({{ channel }}, 1)">Next &rarr;</button>
+            <button onclick="debrisCarousel('uncertain', {{ channel }}, -1)">&larr; Prev</button>
+            <button onclick="debrisCarousel('uncertain', {{ channel }}, 1)">Next &rarr;</button>
           </div>
         </div>
         {% else %}
         <div class="missing">No uncertain/high-debris sample images available for this channel</div>
+        {% endif %}
+
+        <h3>Trustworthy (highest-debris) examples</h3>
+        {% if debris.sample_images_trustworthy.get(channel) %}
+        <div class="carousel" id="debris-carousel-trustworthy-{{ channel }}">
+          <img class="qc-img" id="debris-carousel-img-trustworthy-{{ channel }}" src="{{ debris.sample_images_trustworthy[channel][0].data_uri }}">
+          <div class="carousel-caption" id="debris-carousel-caption-trustworthy-{{ channel }}">{{ debris.sample_images_trustworthy[channel][0].caption }} (1 / {{ debris.sample_images_trustworthy[channel]|length }})</div>
+          <div class="carousel-controls">
+            <button onclick="debrisCarousel('trustworthy', {{ channel }}, -1)">&larr; Prev</button>
+            <button onclick="debrisCarousel('trustworthy', {{ channel }}, 1)">Next &rarr;</button>
+          </div>
+        </div>
+        {% else %}
+        <div class="missing">No trustworthy sample images available for this channel</div>
         {% endif %}
       </div>
       {% endfor %}
@@ -500,22 +502,34 @@
 
   {% if debris.available %}
   const debrisImages = {
-  {% for channel, images in debris.sample_images.items() %}
-    {{ channel }}: [
-    {% for img in images %}
-      {src: {{ img.data_uri | tojson }}, caption: {{ img.caption | tojson }}},
+    uncertain: {
+    {% for channel, images in debris.sample_images_uncertain.items() %}
+      {{ channel }}: [
+      {% for img in images %}
+        {src: {{ img.data_uri | tojson }}, caption: {{ img.caption | tojson }}},
+      {% endfor %}
+      ],
     {% endfor %}
-    ],
-  {% endfor %}
+    },
+    trustworthy: {
+    {% for channel, images in debris.sample_images_trustworthy.items() %}
+      {{ channel }}: [
+      {% for img in images %}
+        {src: {{ img.data_uri | tojson }}, caption: {{ img.caption | tojson }}},
+      {% endfor %}
+      ],
+    {% endfor %}
+    },
   };
   const debrisIdx = {};
-  function debrisCarousel(channel, delta) {
-    const images = debrisImages[channel];
+  function debrisCarousel(sampleClass, channel, delta) {
+    const images = (debrisImages[sampleClass] || {})[channel];
     if (!images || !images.length) return;
-    const next = ((debrisIdx[channel] || 0) + delta + images.length) % images.length;
-    debrisIdx[channel] = next;
-    document.getElementById('debris-carousel-img-' + channel).src = images[next].src;
-    document.getElementById('debris-carousel-caption-' + channel).textContent = images[next].caption + ' (' + (next + 1) + ' / ' + images.length + ')';
+    const key = sampleClass + '-' + channel;
+    const next = ((debrisIdx[key] || 0) + delta + images.length) % images.length;
+    debrisIdx[key] = next;
+    document.getElementById('debris-carousel-img-' + sampleClass + '-' + channel).src = images[next].src;
+    document.getElementById('debris-carousel-caption-' + sampleClass + '-' + channel).textContent = images[next].caption + ' (' + (next + 1) + ' / ' + images.length + ')';
   }
   {% endif %}
 

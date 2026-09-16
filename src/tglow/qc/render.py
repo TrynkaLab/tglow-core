@@ -32,16 +32,14 @@ def fig_to_div(fig):
 
 
 def parse_manifest(manifest_path):
-    """Parse rn_manifest.tsv's ff_channels/dc_psfs columns the same way ManifestRecord.groovy does.
+    """Parse rn_manifest.tsv's ff_channels column the same way ManifestRecord.groovy does.
 
-    Returns (plate_ff_channels: dict[plate] -> list[int 0-indexed], plate_dc_psfs:
-    dict[plate] -> dict[int 0-indexed channel] -> psf path). Both columns are
-    already 0-indexed in the manifest itself - no conversion needed here.
+    Returns plate_ff_channels: dict[plate] -> list[int 0-indexed] - already
+    0-indexed in the manifest itself, no conversion needed here.
     """
     manifest = pd.read_csv(manifest_path, sep="\t", dtype=str)
 
     plate_ff_channels = {}
-    plate_dc_psfs = {}
 
     for _, row in manifest.iterrows():
         plate = row["plate"]
@@ -52,17 +50,7 @@ def parse_manifest(manifest_path):
         else:
             plate_ff_channels[plate] = [int(c) for c in str(ff_channels).split(",")]
 
-        dc_psfs = row.get("dc_psfs")
-        if pd.isna(dc_psfs) or dc_psfs in (None, "none"):
-            plate_dc_psfs[plate] = {}
-        else:
-            psf_map = {}
-            for pair in str(dc_psfs).split(","):
-                channel, path = pair.split("=", 1)
-                psf_map[int(channel)] = path
-            plate_dc_psfs[plate] = psf_map
-
-    return plate_ff_channels, plate_dc_psfs
+    return plate_ff_channels
 
 
 def build_general_tab(measurements, blacklist_df, registration_manifest_path, plate_formats):
@@ -111,22 +99,13 @@ def build_flatfield_tab(flatfields_dir, plate_ff_channels, ff_global_flatfield, 
     }
 
 
-def build_decon_tab(decon_samples_dir, psf_paths, dc_params):
-    psf_figures = tab_decon.build_psf_figures(psf_paths)
+def build_decon_tab(decon_samples_dir, dc_params):
     before_after = tab_decon.build_before_after_images(decon_samples_dir)
-
-    psf_html = {
-        channel: {orientation: fig_to_div(fig) for orientation, fig in figs.items()}
-        for channel, figs in psf_figures.items()
-    }
-
-    channels = sorted(set(psf_html) | set(before_after))
 
     return {
         "available": True,
         "params": dc_params,
-        "channels": channels,
-        "psf_html": psf_html,
+        "channels": sorted(before_after),
         "before_after": before_after,
     }
 
@@ -180,7 +159,7 @@ def build_debris_tab(image_features, debris_max_pct, ratio_min, debris_samples_d
     scatter_plots = tab_debris.build_debris_scatter_plots(image_features, channels, debris_max_pct, ratio_min)
     summary_table = tab_debris.build_debris_summary_table(image_features, channels, debris_max_pct, ratio_min)
     params = tab_debris.build_debris_param_summary(image_features, debris_max_pct, ratio_min)
-    sample_images = tab_debris.sample_debris_images(debris_samples_dir)
+    sample_images_by_class = tab_debris.sample_debris_images(debris_samples_dir)
 
     return {
         "available": True,
@@ -189,7 +168,8 @@ def build_debris_tab(image_features, debris_max_pct, ratio_min, debris_samples_d
         "params": params,
         "summary_table": summary_table,
         "scatter_html": {channel: fig_to_div(fig) for channel, fig in scatter_plots.items()},
-        "sample_images": {channel: sample_images.get(channel, []) for channel in channels},
+        "sample_images_uncertain": {channel: sample_images_by_class.get("uncertain", {}).get(channel, []) for channel in channels},
+        "sample_images_trustworthy": {channel: sample_images_by_class.get("trustworthy", {}).get(channel, []) for channel in channels},
     }
 
 
@@ -221,7 +201,7 @@ def build_report(
 ):
     """Build the QC report HTML and write it to output_path. See bin/render_qc_report.py for the CLI."""
     measurements = aggregate.MeasurementData(measurements_dir)
-    plate_ff_channels, plate_dc_psfs = parse_manifest(manifest_path)
+    plate_ff_channels = parse_manifest(manifest_path)
 
     plates = sorted(measurements.image_features["plate"].unique())
     blacklist_df = aggregate.load_blacklist(blacklist_path, plates=plates)
@@ -257,10 +237,7 @@ def build_report(
         )
 
     if show_decon:
-        # Use the first plate with any PSFs configured as the representative PSF set
-        # (decon PSFs are a per-run instrument setup, not expected to vary by plate).
-        psf_paths = next((psfs for psfs in plate_dc_psfs.values() if psfs), {})
-        context["decon"] = build_decon_tab(decon_samples_dir, psf_paths, dc_params or {})
+        context["decon"] = build_decon_tab(decon_samples_dir, dc_params or {})
 
     if show_scaling:
         context["scaling"] = build_scaling_tab(scaling_index_path, sc_params or {})
