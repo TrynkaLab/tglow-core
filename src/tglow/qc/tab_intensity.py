@@ -30,7 +30,7 @@ def qced_cells(object_features, pattern, threshold):
 
 
 def available_channels(object_features):
-    """Channels (1-indexed, matching the ch<N>__ column convention) that have every FEATURES stat present."""
+    """Channels (0-indexed, matching the ch<N>__ column convention) that have every FEATURES stat present."""
     channels = sorted({int(m.group(1)) for col in object_features.columns for m in [CHANNEL_COLUMN_RE.match(col)] if m})
     return [c for c in channels if all(f"ch{c}__{stat}" in object_features.columns for stat in FEATURES.values())]
 

@@ -137,7 +137,7 @@ def build_flatfield_images(flatfields_dir, plate_channels, ff_global_flatfield, 
 
             merged_channel = offset + channel
             channel_labels[merged_channel] = (
-                f"Cycle {cycle} - Channel {channel + 1}" if cycle is not None else f"Channel {merged_channel + 1}"
+                f"Cycle {cycle} - Channel {channel}" if cycle is not None else f"Channel {merged_channel}"
             )
 
             entries = by_channel.setdefault(merged_channel, [])

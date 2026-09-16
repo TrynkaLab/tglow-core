@@ -35,7 +35,7 @@ DEBRIS_SAMPLE_RE = re.compile(
 
 
 def available_channels(image_features):
-    """Channels (1-indexed) that have both debris_percentage and threshold_mean_ratio."""
+    """Channels (0-indexed) that have both debris_percentage and threshold_mean_ratio."""
     channels = sorted(
         int(m.group(1)) for col in image_features.columns for m in [CHANNEL_COLUMN_RE.match(col)] if m
     )

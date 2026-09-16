@@ -35,7 +35,8 @@ def parse_manifest(manifest_path):
     """Parse rn_manifest.tsv's ff_channels/dc_psfs columns the same way ManifestRecord.groovy does.
 
     Returns (plate_ff_channels: dict[plate] -> list[int 0-indexed], plate_dc_psfs:
-    dict[plate] -> dict[int 0-indexed channel] -> psf path).
+    dict[plate] -> dict[int 0-indexed channel] -> psf path). Both columns are
+    already 0-indexed in the manifest itself - no conversion needed here.
     """
     manifest = pd.read_csv(manifest_path, sep="\t", dtype=str)
 
@@ -49,7 +50,7 @@ def parse_manifest(manifest_path):
         if pd.isna(ff_channels) or ff_channels in (None, "none"):
             plate_ff_channels[plate] = []
         else:
-            plate_ff_channels[plate] = [int(c) - 1 for c in str(ff_channels).split(",")]
+            plate_ff_channels[plate] = [int(c) for c in str(ff_channels).split(",")]
 
         dc_psfs = row.get("dc_psfs")
         if pd.isna(dc_psfs) or dc_psfs in (None, "none"):
@@ -58,7 +59,7 @@ def parse_manifest(manifest_path):
             psf_map = {}
             for pair in str(dc_psfs).split(","):
                 channel, path = pair.split("=", 1)
-                psf_map[int(channel) - 1] = path
+                psf_map[int(channel)] = path
             plate_dc_psfs[plate] = psf_map
 
     return plate_ff_channels, plate_dc_psfs
