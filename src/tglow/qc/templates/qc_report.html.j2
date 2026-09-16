@@ -34,6 +34,9 @@
   table.stats td.label { opacity: 0.7; }
   table.stats td:last-child { text-align: right; font-weight: 500; }
   table.stats tr:last-child td { border-bottom: none; }
+  table.data-table { border-collapse: collapse; width: 100%; margin-bottom: 1.5rem; }
+  table.data-table th, table.data-table td { padding: 0.4rem 0.6rem; font-size: 0.85rem; border-bottom: 1px solid rgba(136, 136, 136, 0.18); text-align: left; }
+  table.data-table th { font-weight: 600; opacity: 0.8; }
   .two-col { display: flex; gap: 1.5rem; align-items: flex-start; flex-wrap: wrap; }
   .two-col > div { flex: 1; min-width: 280px; }
   .two-col > .col-fixed { flex: 0 0 260px; }
@@ -77,6 +80,9 @@
   {% endif %}
   {% if scaling.available %}
     <button class="tab-btn" data-tab="scaling">Scaling factors</button>
+  {% endif %}
+  {% if debris.available %}
+    <button class="tab-btn" data-tab="debris">Debris</button>
   {% endif %}
   </div></nav>
 </div>
@@ -282,14 +288,51 @@
   {{ scaling.barplot_html | safe }}
 
   <h3>Sigmoid curves</h3>
-  <div class="grid">
-  {% for channel, html in scaling.sigmoid_html.items() %}
-    <div class="grid-item">
-      <p>Channel {{ channel }}</p>
-      {{ html | safe }}
-    </div>
+  <select id="sig-channel-select" onchange="showBlock('sig', this.value)">
+  {% for channel in scaling.sigmoid_html.keys() | sort %}
+    <option value="{{ channel }}">Channel {{ channel }}</option>
   {% endfor %}
+  </select>
+
+  {% for channel in scaling.sigmoid_html.keys() | sort %}
+  <div class="channel-block{{ ' active' if loop.first else '' }}" data-group="sig" data-channel="{{ channel }}">
+    {{ scaling.sigmoid_html[channel] | safe }}
   </div>
+  {% endfor %}
+</section>
+{% endif %}
+
+<!-- ==================== Tab 7: Debris ==================== -->
+{% if debris.available %}
+<section id="tab-debris" class="tab-content">
+  <h2>Debris</h2>
+  <p>An image passes for a channel when its debris percentage is &le; {{ debris.debris_max_pct }} and its threshold/mean ratio is &ge; {{ debris.ratio_min }}.</p>
+
+  <table class="data-table">
+    <tr><th>Channel</th><th>Images</th><th>Passed</th><th>% Passed</th><th>Mean debris % (passed)</th></tr>
+  {% for row in debris.pass_table %}
+    <tr>
+      <td>{{ row.channel }}</td>
+      <td>{{ row.n_total }}</td>
+      <td>{{ row.n_passed }}</td>
+      <td>{{ row.pct_passed }}%</td>
+      <td>{{ row.mean_debris_pct_passed if row.mean_debris_pct_passed is not none else "n/a" }}</td>
+    </tr>
+  {% endfor %}
+  </table>
+
+  <h3>Debris % vs threshold/mean ratio</h3>
+  <select id="debris-channel-select" onchange="showBlock('debris', this.value)">
+  {% for channel in debris.scatter_html.keys() | sort %}
+    <option value="{{ channel }}">Channel {{ channel }}</option>
+  {% endfor %}
+  </select>
+
+  {% for channel in debris.scatter_html.keys() | sort %}
+  <div class="channel-block{{ ' active' if loop.first else '' }}" data-group="debris" data-channel="{{ channel }}">
+    {{ debris.scatter_html[channel] | safe }}
+  </div>
+  {% endfor %}
 </section>
 {% endif %}
 

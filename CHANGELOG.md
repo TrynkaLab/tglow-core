@@ -6,6 +6,7 @@
 - Bumped minimum supported Python to 3.10 (required by `bioio-ome-tiff`).
 - Fixed a latent bug in `AICSImageReader.read_image` where the channel=None/plane=not-None code path called `.compute()` on a plain numpy array.
 - Added a pytest suite covering `AICSImageReader`/`AICSImageWriter` (previously untested).
+- Added `bioio-tifffile` as a dependency - `bioio-ome-tiff` hard-requires valid OME-XML metadata, so it rejects plain TIFFs with none at all (e.g. Cellpose's `*_cp_masks.tiff` mask output), which broke `mask_reader` in `ProcessedImageProvider` after the migration above. `BioImage`'s own plugin auto-detection already falls back to any other registered plugin when one rejects a file, so this fixes mask reading with no code change - `bioio-ome-tiff` is still preferred (and unaffected) for real OME-TIFF images.
 
 
 # 0.1.4

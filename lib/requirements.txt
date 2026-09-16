@@ -1,5 +1,6 @@
 bioio>=1.0
 bioio-ome-tiff>=1.0
+bioio-tifffile>=1.0
 numpy>=1.26.4
 ome_model>=6.3.6
 scipy<1.13

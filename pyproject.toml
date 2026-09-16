@@ -25,6 +25,13 @@ classifiers = [
 dependencies = [
     "bioio>=1.0",
     "bioio-ome-tiff>=1.0",
+    # bioio-ome-tiff hard-requires valid OME-XML metadata (see bioio_ome_tiff.reader.Reader.
+    # _is_supported_image) - plain TIFFs with no OME-XML at all (e.g. Cellpose's *_cp_masks.tiff
+    # mask output) fail it outright. BioImage's own plugin auto-detection already falls back to
+    # any other installed/registered plugin when one rejects a file, so just having
+    # bioio-tifffile installed is enough to fix mask reading - no code change needed in
+    # AICSImageReader/ProcessedImageProvider.
+    "bioio-tifffile>=1.0",
     "numpy>=1.26.4",
     "ome_model>=6.3.6",
     "scipy",

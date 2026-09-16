@@ -1,7 +1,9 @@
 """Assembles whichever QC tabs are available into one self-contained qc_report.html.
 
-Tab 1 (general) is always built. Tabs 2-6 are each independently optional and are
-only included if their inputs are provided - see build_report()'s parameters.
+Tab 1 (general) is always built. Tabs 2, 5 and 7 (registration/intensity/debris)
+self-gate on whether their source columns are present in the measurements; tabs
+3, 4 and 6 (flatfield/decon/scaling) are independently optional and only included
+if their inputs are provided - see build_report()'s parameters.
 Plotly figures are embedded as pre-rendered HTML divs with plotly.js injected once
 at the top of the page (via plotly.offline.get_plotlyjs()) so the whole report is a
 single file that works fully offline, with no external assets or server.
@@ -15,7 +17,7 @@ import jinja2
 import plotly.offline
 import pandas as pd
 
-from tglow.qc import aggregate, tab_decon, tab_flatfield, tab_intensity, tab_registration, tab_scaling
+from tglow.qc import aggregate, tab_debris, tab_decon, tab_flatfield, tab_intensity, tab_registration, tab_scaling
 from tglow.qc.assets import image_to_data_uri
 from tglow.qc.plate_layout import infer_plate_formats
 
@@ -165,6 +167,23 @@ def build_scaling_tab(scaling_index_path):
     }
 
 
+def build_debris_tab(image_features, debris_max_pct, ratio_min):
+    channels = tab_debris.available_channels(image_features)
+    if not channels:
+        return {"available": False}
+
+    scatter_plots = tab_debris.build_debris_scatter_plots(image_features, channels, debris_max_pct, ratio_min)
+    pass_table = tab_debris.build_debris_pass_table(image_features, channels, debris_max_pct, ratio_min)
+
+    return {
+        "available": True,
+        "debris_max_pct": debris_max_pct,
+        "ratio_min": ratio_min,
+        "pass_table": pass_table,
+        "scatter_html": {channel: fig_to_div(fig) for channel, fig in scatter_plots.items()},
+    }
+
+
 def build_report(
     output_path,
     measurements_dir,
@@ -176,6 +195,8 @@ def build_report(
     qc_registration_pattern="registration_corr",
     qc_plate_format="auto",
     qc_n_sample_registration=10,
+    qc_debris_max_pct=10.0,
+    qc_debris_min_ratio=1.2,
     show_flatfield=False,
     flatfields_dir=None,
     ff_global_flatfield=False,
@@ -206,6 +227,7 @@ def build_report(
             registration_images_dir, qc_n_sample_registration,
         ),
         "intensity": build_intensity_tab(measurements.object_features, qc_registration_pattern, qc_regcor, plate_formats),
+        "debris": build_debris_tab(measurements.image_features, qc_debris_max_pct, qc_debris_min_ratio),
         "flatfield": {"available": False},
         "decon": {"available": False},
         "scaling": {"available": False},
