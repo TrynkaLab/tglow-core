@@ -150,6 +150,7 @@ def build_intensity_tab(object_features, pattern, threshold, plate_formats):
         "available": True,
         "channels": channels,
         "features": list(tab_intensity.FEATURES.keys()),
+        "default_feature": tab_intensity.DEFAULT_FEATURE,
         "heatmaps_html": heatmaps_html,
         "distributions_html": distributions_html,
     }

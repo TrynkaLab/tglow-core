@@ -2,8 +2,9 @@
 
 Computed on qc'ed cells only (registration correlation >= sc_registration_thresh, same filter as
 Tab 2/tab_registration.py) from measure_intensity's unscaled object_features output.
-Features are the min/mean/median/max per-channel stats measure_intensity writes as
-ch<N>__<stat> columns.
+Features are the min/q25/median/q75/mean/max per-channel stats measure_intensity writes as
+ch<N>__<stat> columns. Median is the default selected feature (see DEFAULT_FEATURE) -
+the template selects it explicitly rather than relying on dict order.
 """
 
 import logging
@@ -17,7 +18,8 @@ from tglow.qc.registration import filter_registration_correlation
 log = logging.getLogger(__name__)
 
 # Display label -> measure_intensity stat suffix
-FEATURES = {"min": "min", "mean": "mean", "median": "median", "max": "max"}
+FEATURES = {"min": "min", "q25": "q25", "median": "median", "q75": "q75", "mean": "mean", "max": "max"}
+DEFAULT_FEATURE = "median"
 
 CHANNEL_COLUMN_RE = re.compile(r"^ch(\d+)__(.+)$")
 
@@ -28,7 +30,7 @@ def qced_cells(object_features, pattern, threshold):
 
 
 def available_channels(object_features):
-    """Channels (1-indexed, matching the ch<N>__ column convention) that have all 4 FEATURES present."""
+    """Channels (1-indexed, matching the ch<N>__ column convention) that have every FEATURES stat present."""
     channels = sorted({int(m.group(1)) for col in object_features.columns for m in [CHANNEL_COLUMN_RE.match(col)] if m})
     return [c for c in channels if all(f"ch{c}__{stat}" in object_features.columns for stat in FEATURES.values())]
 

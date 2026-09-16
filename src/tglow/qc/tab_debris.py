@@ -6,10 +6,14 @@ Debris statistics are merged directly into measure_intensity's image_features ou
 measure_intensity_features_with_debris.py - so this tab reads straight off
 MeasurementData.image_features, with no separate debris_statistics file to load.
 
-An image counts as "with debris" for a given channel when its debris_percentage is
-above debris_max_pct OR its threshold_mean_ratio is below ratio_min - both
-configurable, since what counts as an acceptable debris level/threshold separation is
-experiment-specific. "Without debris" is the complement (both criteria clear).
+threshold_mean_ratio is a trust check on the threshold itself: below ratio_min, the
+threshold sits too close to the background mean to be a meaningful separation, so
+debris_percentage computed from it can't be trusted either way. An image counts as
+"with debris" for a given channel only when the threshold clears that trust check
+(threshold_mean_ratio >= ratio_min) AND debris_percentage is above debris_max_pct -
+both configurable, since what counts as an acceptable debris level/threshold
+separation is experiment-specific. "Without debris" is everything else, including
+images whose ratio is too low to trust either way.
 """
 
 import glob
@@ -73,9 +77,12 @@ def build_debris_scatter_plots(image_features, channels, debris_max_pct, ratio_m
 def build_debris_summary_table(image_features, channels, debris_max_pct, ratio_min):
     """One row per (plate, channel): n_total, n_with_debris/n_without_debris (+ pct), mean threshold/background.
 
-    "With debris" fails the pass criteria (debris_percentage > debris_max_pct OR
-    threshold_mean_ratio < ratio_min); "without debris" is the complement - the
-    inverse framing of the pass/fail check itself, not a different threshold.
+    "With debris" requires BOTH a trustworthy threshold (threshold_mean_ratio >=
+    ratio_min - below this the threshold is too close to the background mean to
+    trust either way) AND debris_percentage above debris_max_pct. "Without debris"
+    is everything else - a low ratio doesn't get counted as "with debris" just
+    because debris_percentage also happens to be high, since that percentage isn't
+    trustworthy either in that case.
     """
     rows = []
 
@@ -90,9 +97,9 @@ def build_debris_summary_table(image_features, channels, debris_max_pct, ratio_m
             df = plate_df[[pct_col, ratio_col]].dropna()
             n_total = len(df)
 
-            without_debris = df[(df[pct_col] <= debris_max_pct) & (df[ratio_col] >= ratio_min)]
-            n_without = len(without_debris)
-            n_with = n_total - n_without
+            with_debris = df[(df[ratio_col] >= ratio_min) & (df[pct_col] > debris_max_pct)]
+            n_with = len(with_debris)
+            n_without = n_total - n_with
 
             row = {
                 "plate": plate,

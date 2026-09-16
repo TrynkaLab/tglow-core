@@ -256,14 +256,14 @@
   </select>
   <select id="int-feature-select" onchange="syncIntensity()">
   {% for feature in intensity.features %}
-    <option value="{{ feature }}">{{ feature }}</option>
+    <option value="{{ feature }}"{{ ' selected' if feature == intensity.default_feature else '' }}>{{ feature }}</option>
   {% endfor %}
   </select>
 
   {% for channel in intensity.channels %}
   <div class="channel-block{{ ' active' if loop.first else '' }}" data-group="int-ch" data-channel="{{ channel }}">
     {% for feature in intensity.features %}
-    <div class="feature-block{{ ' active' if loop.first else '' }}" data-group="int-feat-{{ channel }}" data-channel="{{ feature }}">
+    <div class="feature-block{{ ' active' if feature == intensity.default_feature else '' }}" data-group="int-feat-{{ channel }}" data-channel="{{ feature }}">
       <div class="two-col">
         <div>
           <h3>Distribution</h3>
@@ -308,7 +308,7 @@
 {% if debris.available %}
 <section id="tab-debris" class="tab-content">
   <h2>Debris</h2>
-  <p>An image counts as "with debris" for a channel when its debris percentage is &gt; {{ debris.debris_max_pct }} or its threshold/mean ratio is &lt; {{ debris.ratio_min }}; "without debris" is the complement.</p>
+  <p>An image counts as "with debris" for a channel when its threshold/mean ratio is &ge; {{ debris.ratio_min }} (a trustworthy threshold) AND its debris percentage is &gt; {{ debris.debris_max_pct }}; "without debris" is everything else, including images whose ratio is too low to trust either way.</p>
 
   <div class="two-col">
     <div class="col-fixed">
