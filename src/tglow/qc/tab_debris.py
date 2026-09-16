@@ -1,19 +1,25 @@
 """Tab 7 (debris) - debris percentage vs threshold/mean ("mean/otsu") ratio per channel,
-per-plate/channel summary table, and clickable highest-debris example images.
+per-plate/channel summary table, and clickable uncertain/high-debris example images.
 
 Debris statistics are merged directly into measure_intensity's image_features output
 (one row per field) - see build_debris_statistics_wide in
 measure_intensity_features_with_debris.py - so this tab reads straight off
 MeasurementData.image_features, with no separate debris_statistics file to load.
 
-threshold_mean_ratio is a trust check on the threshold itself: below ratio_min, the
-threshold sits too close to the background mean to be a meaningful separation, so
-debris_percentage computed from it can't be trusted either way. An image counts as
-"with debris" for a given channel only when the threshold clears that trust check
-(threshold_mean_ratio >= ratio_min) AND debris_percentage is above debris_max_pct -
-both configurable, since what counts as an acceptable debris level/threshold
-separation is experiment-specific. "Without debris" is everything else, including
-images whose ratio is too low to trust either way.
+Every image is classified per channel into exactly one of three groups (both
+ratio_min/debris_max_pct configurable, since what counts as an acceptable debris
+level/threshold separation is experiment-specific):
+- "untrustworthy" (threshold_mean_ratio < ratio_min): the threshold sits too close
+  to the background mean to be a meaningful separation, so debris_percentage
+  computed from it can't be trusted either way.
+- "trustworthy" (threshold_mean_ratio >= ratio_min AND debris_percentage <
+  debris_max_pct): a reliable threshold and an acceptable debris level - the
+  normal, usable case.
+- "uncertain" (threshold_mean_ratio >= ratio_min AND debris_percentage >=
+  debris_max_pct): a reliable threshold but an unusually high debris fraction -
+  often a sign the background itself is anomalously uniform/dark (making the
+  debris mask spuriously large) rather than a genuine debris detection, so it's
+  flagged as suspect rather than trusted outright.
 """
 
 import glob
@@ -75,14 +81,10 @@ def build_debris_scatter_plots(image_features, channels, debris_max_pct, ratio_m
 
 
 def build_debris_summary_table(image_features, channels, debris_max_pct, ratio_min):
-    """One row per (plate, channel): n_total, n_with_debris/n_without_debris (+ pct), mean threshold/background.
+    """One row per (plate, channel): n_total, the 3-way classification counts (+ pct), mean threshold/background.
 
-    "With debris" requires BOTH a trustworthy threshold (threshold_mean_ratio >=
-    ratio_min - below this the threshold is too close to the background mean to
-    trust either way) AND debris_percentage above debris_max_pct. "Without debris"
-    is everything else - a low ratio doesn't get counted as "with debris" just
-    because debris_percentage also happens to be high, since that percentage isn't
-    trustworthy either in that case.
+    See the module docstring for the untrustworthy/trustworthy/uncertain
+    definitions - every image with both stats present falls into exactly one.
     """
     rows = []
 
@@ -97,18 +99,23 @@ def build_debris_summary_table(image_features, channels, debris_max_pct, ratio_m
             df = plate_df[[pct_col, ratio_col]].dropna()
             n_total = len(df)
 
-            with_debris = df[(df[ratio_col] >= ratio_min) & (df[pct_col] > debris_max_pct)]
-            n_with = len(with_debris)
-            n_without = n_total - n_with
+            n_untrustworthy = len(df[df[ratio_col] < ratio_min])
+            n_trustworthy = len(df[(df[ratio_col] >= ratio_min) & (df[pct_col] < debris_max_pct)])
+            n_uncertain = len(df[(df[ratio_col] >= ratio_min) & (df[pct_col] >= debris_max_pct)])
+
+            def _pct(n):
+                return round(100 * n / n_total, 1) if n_total else 0
 
             row = {
                 "plate": plate,
                 "channel": channel,
                 "n_total": n_total,
-                "n_with_debris": n_with,
-                "pct_with_debris": round(100 * n_with / n_total, 1) if n_total else 0,
-                "n_without_debris": n_without,
-                "pct_without_debris": round(100 * n_without / n_total, 1) if n_total else 0,
+                "n_untrustworthy": n_untrustworthy,
+                "pct_untrustworthy": _pct(n_untrustworthy),
+                "n_trustworthy": n_trustworthy,
+                "pct_trustworthy": _pct(n_trustworthy),
+                "n_uncertain": n_uncertain,
+                "pct_uncertain": _pct(n_uncertain),
                 "mean_threshold": round(plate_df[threshold_col].mean(), 2) if threshold_col in plate_df.columns else None,
                 "mean_background": round(plate_df[background_col].mean(), 2) if background_col in plate_df.columns else None,
             }
@@ -119,7 +126,9 @@ def build_debris_summary_table(image_features, channels, debris_max_pct, ratio_m
 
 def build_debris_param_summary(image_features, debris_max_pct, ratio_min):
     """Side-table params: debris method/cell-mask expansion (constant per run, read
-    straight off image_features) plus the configured pass-criteria thresholds - same
+    straight off image_features - not exposed as pipeline params, so there's no
+    exact param name to key them by) plus the configured pass-criteria thresholds,
+    keyed by their exact param name (sc_debris_max_pct/sc_debris_min_ratio) - same
     "just pass a dict through" pattern as tab_flatfield.build_flatfield_param_summary."""
     method = image_features["method"].iloc[0] if "method" in image_features.columns and len(image_features) else "n/a"
     expansion = image_features["cellmask_expansion"].iloc[0] if "cellmask_expansion" in image_features.columns and len(image_features) else "n/a"
@@ -127,8 +136,8 @@ def build_debris_param_summary(image_features, debris_max_pct, ratio_min):
     return {
         "Debris method": method,
         "Cell mask expansion": expansion,
-        "Max debris %": debris_max_pct,
-        "Min threshold/mean ratio": ratio_min,
+        "sc_debris_max_pct": debris_max_pct,
+        "sc_debris_min_ratio": ratio_min,
     }
 
 

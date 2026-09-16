@@ -85,6 +85,7 @@ def build_registration_tab(object_features, pattern, threshold, registration_ima
     return {
         "available": True,
         "stats": stats,
+        "params": {"sc_registration_pattern": pattern, "sc_registration_thresh": threshold},
         "density_html": fig_to_div(density_fig),
         "sample_images": images,
     }
@@ -110,7 +111,7 @@ def build_flatfield_tab(flatfields_dir, plate_ff_channels, ff_global_flatfield, 
     }
 
 
-def build_decon_tab(decon_samples_dir, psf_paths):
+def build_decon_tab(decon_samples_dir, psf_paths, dc_params):
     psf_figures = tab_decon.build_psf_figures(psf_paths)
     before_after = tab_decon.build_before_after_images(decon_samples_dir)
 
@@ -123,6 +124,7 @@ def build_decon_tab(decon_samples_dir, psf_paths):
 
     return {
         "available": True,
+        "params": dc_params,
         "channels": channels,
         "psf_html": psf_html,
         "before_after": before_after,
@@ -157,13 +159,14 @@ def build_intensity_tab(object_features, pattern, threshold, plate_formats):
     }
 
 
-def build_scaling_tab(scaling_index_path):
+def build_scaling_tab(scaling_index_path, sc_params):
     scaling_index = tab_scaling.load_scaling_index(scaling_index_path)
     barplot = tab_scaling.build_scale_factor_barplot(scaling_index)
     sigmoid_plots = tab_scaling.build_sigmoid_plots(scaling_index)
 
     return {
         "available": True,
+        "params": sc_params,
         "barplot_html": fig_to_div(barplot),
         "sigmoid_html": {channel: fig_to_div(fig) for channel, fig in sigmoid_plots.items()},
     }
@@ -209,9 +212,12 @@ def build_report(
     ff_params=None,
     show_decon=False,
     decon_samples_dir=None,
+    dc_params=None,
     show_scaling=False,
     scaling_index_path=None,
+    sc_params=None,
     debris_samples_dir=None,
+    pipeline_version=None,
 ):
     """Build the QC report HTML and write it to output_path. See bin/render_qc_report.py for the CLI."""
     measurements = aggregate.MeasurementData(measurements_dir)
@@ -226,8 +232,13 @@ def build_report(
     # a plate's true size if filtering happens to remove its higher rows/columns).
     plate_formats = infer_plate_formats(measurements.image_features, override=qc_plate_format)
 
+    logo_path = resources.files("tglow.qc").joinpath("static", "logo_trynka.png")
+    logo_data_uri = image_to_data_uri(str(logo_path), max_dimension=200)
+
     context = {
         "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "pipeline_version": pipeline_version or "unknown",
+        "logo_data_uri": logo_data_uri,
         "general": build_general_tab(measurements, blacklist_df, registration_manifest_path, plate_formats),
         "registration": build_registration_tab(
             measurements.object_features, qc_registration_pattern, qc_regcor,
@@ -249,10 +260,10 @@ def build_report(
         # Use the first plate with any PSFs configured as the representative PSF set
         # (decon PSFs are a per-run instrument setup, not expected to vary by plate).
         psf_paths = next((psfs for psfs in plate_dc_psfs.values() if psfs), {})
-        context["decon"] = build_decon_tab(decon_samples_dir, psf_paths)
+        context["decon"] = build_decon_tab(decon_samples_dir, psf_paths, dc_params or {})
 
     if show_scaling:
-        context["scaling"] = build_scaling_tab(scaling_index_path)
+        context["scaling"] = build_scaling_tab(scaling_index_path, sc_params or {})
 
     template_source = resources.files("tglow.qc").joinpath("templates", "qc_report.html.j2").read_text()
     env = jinja2.Environment(autoescape=False, trim_blocks=True, lstrip_blocks=True)

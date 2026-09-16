@@ -66,4 +66,4 @@ include = ["tglow*"]
 exclude = ["tests", "docs"]
 
 [tool.setuptools.package-data]
-tglow = ["qc/templates/*"]
+tglow = ["qc/templates/*", "qc/static/*"]
