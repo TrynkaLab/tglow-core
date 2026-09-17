@@ -58,13 +58,18 @@ def build_correlation_density_plot(object_features, pattern, threshold):
         return None
 
     fig = go.Figure()
+    data_min, data_max = None, None
     for col in corr_cols:
+        values = object_features[col].dropna()
         fig.add_trace(go.Histogram(
-            x=object_features[col].dropna(),
+            x=values,
             histnorm="probability density",
             name=col,
             opacity=0.6,
         ))
+        if len(values):
+            data_min = values.min() if data_min is None else min(data_min, values.min())
+            data_max = values.max() if data_max is None else max(data_max, values.max())
 
     fig.add_vline(x=threshold, line_dash="dash", line_color="red",
                    annotation_text=f"qc_regcor={threshold}", annotation_position="top right")
@@ -74,11 +79,19 @@ def build_correlation_density_plot(object_features, pattern, threshold):
         yaxis_title="Density",
         barmode="overlay",
     )
+    if data_min is not None:
+        # Correlation is mathematically bounded to [-1, 1] - clamp the axis range to
+        # the real data span but never let it extend past that, even if the data
+        # creeps slightly outside via floating point.
+        fig.update_layout(xaxis=dict(range=[max(-1, data_min), min(1, data_max)]))
+
     # Lives in the sidebar (see the template) rather than tab-main, so it must not be
     # forced square/fixed-width - and a bit shorter than the default fits the sidebar
-    # better than a plot sized for the main column.
+    # better than a plot sized for the main column. Tight margins so the plot fills
+    # the sidebar's own narrow width instead of leaving Plotly's default ~80px
+    # margins either side.
     style_plot(fig, square=False)
-    fig.update_layout(height=300)
+    fig.update_layout(height=300, margin=dict(l=45, r=15, t=32, b=35))
     return fig
 
 

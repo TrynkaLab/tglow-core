@@ -87,9 +87,11 @@ def build_intensity_distributions(qced_df, channels):
             fig.update_layout(title=f"Ch{channel} {label} intensity distribution (qc'ed cells)", xaxis_title=label, yaxis_title="Count")
             # Lives in the sidebar (see the template) rather than tab-main, so it must
             # not be forced square/fixed-width - and a bit shorter fits the sidebar
-            # better than a plot sized for the main column.
+            # better than a plot sized for the main column. Tight margins so the plot
+            # fills the sidebar's own narrow width instead of leaving Plotly's default
+            # ~80px margins either side.
             style_plot(fig, square=False)
-            fig.update_layout(height=300)
+            fig.update_layout(height=300, margin=dict(l=45, r=15, t=32, b=35))
             distributions[channel][label] = fig
 
     return distributions
