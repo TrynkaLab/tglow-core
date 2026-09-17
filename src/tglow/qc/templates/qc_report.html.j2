@@ -161,6 +161,7 @@
         <tr><td class="label">{{ key }}</td><td>{{ value }}</td></tr>
       {% endfor %}
       </table>
+      {% if registration.density_html %}{{ registration.density_html | safe }}{% endif %}
     </aside>
 
     <div class="tab-main">
@@ -172,8 +173,6 @@
           <tr><td class="label">Total cells</td><td>{{ registration.stats.n_total_cells }}</td></tr>
         </table>
       </div>
-
-      {% if registration.density_html %}{{ registration.density_html | safe }}{% endif %}
 
       <h3>Sample registration images</h3>
       {% if registration.sample_images %}
@@ -303,6 +302,17 @@
         <option value="{{ feature }}"{{ ' selected' if feature == intensity.default_feature else '' }}>{{ feature }}</option>
       {% endfor %}
       </select>
+
+      {% for channel in intensity.channels %}
+      <div class="channel-block{{ ' active' if loop.first else '' }}" data-group="int-ch" data-channel="{{ channel }}">
+        {% for feature in intensity.features %}
+        <div class="feature-block{{ ' active' if feature == intensity.default_feature else '' }}" data-group="int-feat-{{ channel }}" data-channel="{{ feature }}">
+          <h3>Distribution</h3>
+          {{ intensity.distributions_html[channel][feature] | safe }}
+        </div>
+        {% endfor %}
+      </div>
+      {% endfor %}
     </aside>
 
     <div class="tab-main">
@@ -310,18 +320,10 @@
       <div class="channel-block{{ ' active' if loop.first else '' }}" data-group="int-ch" data-channel="{{ channel }}">
         {% for feature in intensity.features %}
         <div class="feature-block{{ ' active' if feature == intensity.default_feature else '' }}" data-group="int-feat-{{ channel }}" data-channel="{{ feature }}">
-          <div class="two-col">
-            <div>
-              <h3>Distribution</h3>
-              {{ intensity.distributions_html[channel][feature] | safe }}
-            </div>
-            <div>
-              <h3>Per-plate well-mean heatmaps</h3>
-              {% for plate, html in intensity.heatmaps_html[channel][feature].items() %}
-                {{ html | safe }}
-              {% endfor %}
-            </div>
-          </div>
+          <h3>Per-plate well-mean heatmaps</h3>
+          {% for plate, html in intensity.heatmaps_html[channel][feature].items() %}
+            {{ html | safe }}
+          {% endfor %}
         </div>
         {% endfor %}
       </div>

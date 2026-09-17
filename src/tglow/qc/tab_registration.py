@@ -74,7 +74,11 @@ def build_correlation_density_plot(object_features, pattern, threshold):
         yaxis_title="Density",
         barmode="overlay",
     )
-    style_plot(fig)
+    # Lives in the sidebar (see the template) rather than tab-main, so it must not be
+    # forced square/fixed-width - and a bit shorter than the default fits the sidebar
+    # better than a plot sized for the main column.
+    style_plot(fig, square=False)
+    fig.update_layout(height=300)
     return fig
 
 

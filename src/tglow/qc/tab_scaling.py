@@ -36,7 +36,7 @@ def build_scale_factor_barplot(scaling_index):
         yaxis_title="Scale factor",
         barmode="group",
     )
-    style_plot(fig)
+    style_plot(fig, square=False)
     return fig
 
 

@@ -85,7 +85,11 @@ def build_intensity_distributions(qced_df, channels):
             col = f"ch{channel}__{stat}"
             fig = go.Figure(data=go.Histogram(x=qced_df[col].dropna(), nbinsx=50))
             fig.update_layout(title=f"Ch{channel} {label} intensity distribution (qc'ed cells)", xaxis_title=label, yaxis_title="Count")
-            style_plot(fig)
+            # Lives in the sidebar (see the template) rather than tab-main, so it must
+            # not be forced square/fixed-width - and a bit shorter fits the sidebar
+            # better than a plot sized for the main column.
+            style_plot(fig, square=False)
+            fig.update_layout(height=300)
             distributions[channel][label] = fig
 
     return distributions
