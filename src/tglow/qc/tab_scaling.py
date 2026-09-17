@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 
+from tglow.qc.assets import style_plot
 from tglow.utils.tglow_utils import sigmoid
 
 log = logging.getLogger(__name__)
@@ -35,6 +36,7 @@ def build_scale_factor_barplot(scaling_index):
         yaxis_title="Scale factor",
         barmode="group",
     )
+    style_plot(fig)
     return fig
 
 
@@ -57,6 +59,7 @@ def build_sigmoid_plots(scaling_index, n_points=200):
             xaxis_title="Intensity",
             yaxis_title="Sigmoid weight",
         )
+        style_plot(fig)
         figures[channel] = fig
 
     return figures

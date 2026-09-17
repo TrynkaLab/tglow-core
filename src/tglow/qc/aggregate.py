@@ -10,6 +10,7 @@ import logging
 import pandas as pd
 import plotly.graph_objects as go
 
+from tglow.qc.assets import style_plot
 from tglow.qc.io import load_measurements
 from tglow.qc.plate_layout import build_well_grid, style_heatmap_axes
 
@@ -123,6 +124,7 @@ def build_cells_per_well_heatmaps(object_features, plate_formats):
         fig.update_yaxes(autorange="reversed")
         fig.update_layout(title=f"Cells per well - plate {plate}", xaxis_title="Column", yaxis_title="Row")
         style_heatmap_axes(fig)
+        style_plot(fig, square=False, white_bg=False)
         figures[plate] = fig
 
     return figures

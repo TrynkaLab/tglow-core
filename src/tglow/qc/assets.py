@@ -43,3 +43,15 @@ def image_to_data_uri(path, max_dimension=MAX_IMAGE_DIMENSION):
 
     encoded = base64.b64encode(np.asarray(buffer)).decode("ascii")
     return f"data:image/png;base64,{encoded}"
+
+
+def style_plot(fig, square=True, white_bg=True):
+    """Shared QC report plot styling - a title centered and tight to the plot area,
+    plus (disable for heatmaps, which keep their default light-grey plot area so
+    empty wells stay visible) a roughly square aspect ratio and a white background."""
+    fig.update_layout(title=dict(x=0.5, xanchor="center", font=dict(size=13)), margin=dict(t=32))
+    if square:
+        fig.update_layout(autosize=False, width=480, height=480)
+    if white_bg:
+        fig.update_layout(plot_bgcolor="white", paper_bgcolor="white")
+    return fig

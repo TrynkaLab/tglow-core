@@ -21,7 +21,7 @@ BEFORE_AFTER_RE = re.compile(r"^(?P<plate>.+)_(?P<well>[A-Za-z]+\d+)_ch(?P<chann
 def build_before_after_images(decon_samples_dir):
     """Group the before/after PNGs written by make_decon_before_after.py by channel.
 
-    Returns dict channel(int) -> list of {"plate": ..., "well": ..., "data_uri": ...}.
+    Returns dict channel(int) -> list of {"caption": ..., "data_uri": ...}.
     """
     if decon_samples_dir is None or not os.path.isdir(decon_samples_dir):
         return {}
@@ -39,8 +39,7 @@ def build_before_after_images(decon_samples_dir):
 
         channel = int(match.group("channel"))
         by_channel.setdefault(channel, []).append({
-            "plate": match.group("plate"),
-            "well": match.group("well"),
+            "caption": f"{match.group('plate')} / {match.group('well')}",
             "data_uri": data_uri,
         })
 

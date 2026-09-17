@@ -12,6 +12,7 @@ import re
 
 import plotly.graph_objects as go
 
+from tglow.qc.assets import style_plot
 from tglow.qc.plate_layout import build_well_grid, style_heatmap_axes
 from tglow.qc.registration import filter_registration_correlation
 
@@ -68,6 +69,7 @@ def build_intensity_heatmaps(qced_df, channels, plate_formats):
                 fig.update_yaxes(autorange="reversed")
                 fig.update_layout(title=f"Ch{channel} {label} intensity - plate {plate}", xaxis_title="Column", yaxis_title="Row")
                 style_heatmap_axes(fig)
+                style_plot(fig, square=False, white_bg=False)
                 heatmaps[channel][label][plate] = fig
 
     return heatmaps
@@ -83,6 +85,7 @@ def build_intensity_distributions(qced_df, channels):
             col = f"ch{channel}__{stat}"
             fig = go.Figure(data=go.Histogram(x=qced_df[col].dropna(), nbinsx=50))
             fig.update_layout(title=f"Ch{channel} {label} intensity distribution (qc'ed cells)", xaxis_title=label, yaxis_title="Count")
+            style_plot(fig)
             distributions[channel][label] = fig
 
     return distributions

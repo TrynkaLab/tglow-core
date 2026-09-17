@@ -31,7 +31,7 @@ import re
 
 import plotly.graph_objects as go
 
-from tglow.qc.assets import image_to_data_uri
+from tglow.qc.assets import image_to_data_uri, style_plot
 
 log = logging.getLogger(__name__)
 
@@ -57,7 +57,7 @@ def _channel_columns(image_features, channel):
 
 
 def build_debris_scatter_plots(image_features, channels, debris_max_pct, ratio_min):
-    """dict[channel] -> Plotly scatter of debris_percentage (x) vs threshold_mean_ratio (y), one point per field."""
+    """dict[channel] -> Plotly scatter of threshold_mean_ratio (x) vs debris_percentage (y), one point per field."""
     figures = {}
 
     for channel in channels:
@@ -65,18 +65,19 @@ def build_debris_scatter_plots(image_features, channels, debris_max_pct, ratio_m
         df = image_features[[pct_col, ratio_col]].dropna()
 
         fig = go.Figure(data=go.Scatter(
-            x=df[pct_col], y=df[ratio_col], mode="markers",
+            x=df[ratio_col], y=df[pct_col], mode="markers",
             marker=dict(size=6, opacity=0.6),
         ))
-        fig.add_vline(x=debris_max_pct, line_dash="dash", line_color="red",
+        fig.add_hline(y=debris_max_pct, line_dash="dash", line_color="red",
                       annotation_text=f"max debris %={debris_max_pct}", annotation_position="top right")
-        fig.add_hline(y=ratio_min, line_dash="dash", line_color="red",
+        fig.add_vline(x=ratio_min, line_dash="dash", line_color="red",
                       annotation_text=f"min ratio={ratio_min}", annotation_position="bottom right")
         fig.update_layout(
-            title=f"Channel {channel}: debris % vs threshold/mean ratio",
-            xaxis_title="Debris percentage",
-            yaxis_title="Threshold / mean ratio",
+            title=f"Channel {channel}: threshold/mean ratio vs debris %",
+            xaxis_title="Threshold / mean ratio",
+            yaxis_title="Debris percentage",
         )
+        style_plot(fig)
         figures[channel] = fig
 
     return figures

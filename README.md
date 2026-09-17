@@ -13,6 +13,9 @@ Key features
 - Convert large Revity/PerkinElmer exports to a much lower number of `/plate/row/col/field.ome.tiff` files
 - Index and query plate/row/col/field image layouts using an `ImageQuery` object
 - Utilities for registration, flatfield correction and numeric conversions designed to work with `tglow-pipeline`
+- Render a self-contained HTML QC report for a `tglow-pipeline` run (`tglow.qc.render.build_report`), covering general stats, registration, flatfield, deconvolution, intensity, scaling and debris tabs
+
+Channel numbers are 0-indexed throughout this package, including in the `ch<N>__` feature columns produced for `tglow-pipeline` and in the QC report.
 
 
 # Installation
@@ -55,9 +58,6 @@ iq = ImageQuery('plate1', 1, 1, 'field001')
 stack = reader.read_stack(iq)
 writer.write_stack(stack, iq)
 ```
-
-# Known issues
-There is a known issue with BaSiCpy (https://github.com/peng-lab/BaSiCPy/issues/162). This requires using specific, older versions of `hyperactive` and `gradient-free-optimizers`, which can in turn require an older `pandas` version. The dependency chain can be inconvenient.
 
 # Acknowledgements
 - Martin Prete: initial XML parsing code adapted for this project

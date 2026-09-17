@@ -10,10 +10,11 @@ import glob
 import logging
 import os
 import random
+import re
 
 import plotly.graph_objects as go
 
-from tglow.qc.assets import image_to_data_uri
+from tglow.qc.assets import image_to_data_uri, style_plot
 from tglow.qc.registration import filter_registration_correlation, registration_correlation_columns
 
 log = logging.getLogger(__name__)
@@ -22,6 +23,13 @@ log = logging.getLogger(__name__)
 # unchanged inputs (keeps -resume/report diffs meaningful instead of churning
 # on every run).
 SAMPLE_SEED = 42
+
+# run_registration.py (see processes/registration.nf) writes these under
+# <registration_images_dir>/<ref_plate>/<row letter>/<col>/, named
+# "<field>_<qry_plate>_refch<N>_qrych<N>.png" - plate/row/col live in the
+# directory structure rather than the filename, so the caption below is
+# assembled from both.
+FILENAME_RE = re.compile(r"^(?P<field>\d+)_(?P<qry_plate>.+)_refch(?P<ref_ch>\d+)_qrych(?P<qry_ch>\d+)\.png$")
 
 
 def build_registration_stats(object_features, pattern, threshold):
@@ -66,13 +74,15 @@ def build_correlation_density_plot(object_features, pattern, threshold):
         yaxis_title="Density",
         barmode="overlay",
     )
+    style_plot(fig)
     return fig
 
 
 def sample_registration_images(registration_images_dir, n_samples):
     """Randomly sample up to n_samples registration PNGs (deterministic seed) as data URIs.
 
-    Returns a list of {"caption": <filename>, "data_uri": ...} dicts, in sampled order.
+    Returns a list of {"caption": "<plate> / <well> / field <N> (ref vs <qry_plate>)",
+    "data_uri": ...} dicts, in sampled order.
     """
     if registration_images_dir is None or not os.path.isdir(registration_images_dir):
         return []
@@ -86,7 +96,19 @@ def sample_registration_images(registration_images_dir, n_samples):
     images = []
     for path in sampled:
         data_uri = image_to_data_uri(path)
-        if data_uri is not None:
-            images.append({"caption": os.path.basename(path), "data_uri": data_uri})
+        if data_uri is None:
+            continue
+
+        plate, row_letter, col = os.path.normpath(path).split(os.sep)[-4:-1]
+        well = f"{row_letter}{col.zfill(2)}"
+
+        match = FILENAME_RE.match(os.path.basename(path))
+        if match:
+            caption = f"{plate} / {well} / field {match.group('field')} (ref vs {match.group('qry_plate')})"
+        else:
+            log.warning(f"Registration image with unexpected name: {path}")
+            caption = f"{plate} / {well} / {os.path.basename(path)}"
+
+        images.append({"caption": caption, "data_uri": data_uri})
 
     return images
