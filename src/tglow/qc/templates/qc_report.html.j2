@@ -385,7 +385,7 @@
     </aside>
 
     <div class="tab-main">
-      <p>Each image is classified per channel into one of three groups: <strong>no debris</strong> (threshold/mean ratio &lt; {{ debris.ratio_min }} - it is the debris <em>percentage</em> that can't be trusted here, not the image itself: the threshold sits too close to the background to reliably measure how much debris is present, so it's treated as having no measurable debris), <strong>debris</strong> (ratio &ge; {{ debris.ratio_min }} AND debris % &lt; {{ debris.debris_max_pct }} - a reliably measured, acceptable debris level), or <strong>uncertain</strong> (ratio &ge; {{ debris.ratio_min }} AND debris % &ge; {{ debris.debris_max_pct }} - a reliable ratio but an unusually high debris fraction, often a sign the background itself is anomalous rather than a genuine debris detection).</p>
+      <p>Each image is classified per channel into one of three groups: <strong>no debris</strong> (threshold/mean ratio &lt; {{ debris.ratio_min }} - the threshold sits close to the mean of the background suggesting there is no debris and thus the debris percentage is not to be trusted), <strong>debris</strong> (ratio &ge; {{ debris.ratio_min }} AND debris % &lt; {{ debris.debris_max_pct }} - a reliably measured, acceptable debris level), or <strong>uncertain</strong> (ratio &ge; {{ debris.ratio_min }} AND debris % &ge; {{ debris.debris_max_pct }} - a reliable ratio but an unusually high debris fraction, often a sign the background itself is anomalous rather than a genuine debris detection).</p>
 
       <table class="data-table" id="debris-summary-table">
         <thead>
@@ -398,8 +398,9 @@
             <th class="sortable" onclick="sortTable(this.closest('table'), 5, 'number')">% debris</th>
             <th class="sortable" onclick="sortTable(this.closest('table'), 6, 'number')">Uncertain</th>
             <th class="sortable" onclick="sortTable(this.closest('table'), 7, 'number')">% uncertain</th>
-            <th class="sortable" onclick="sortTable(this.closest('table'), 8, 'number')">Mean threshold</th>
-            <th class="sortable" onclick="sortTable(this.closest('table'), 9, 'number')">Mean background</th>
+            <th class="sortable" onclick="sortTable(this.closest('table'), 8, 'number')">Mean debris %</th>
+            <th class="sortable" onclick="sortTable(this.closest('table'), 9, 'number')">Mean threshold</th>
+            <th class="sortable" onclick="sortTable(this.closest('table'), 10, 'number')">Mean background</th>
           </tr>
         </thead>
         <tbody>
@@ -413,6 +414,7 @@
             <td data-sort="{{ row.pct_trustworthy }}">{{ row.pct_trustworthy }}%</td>
             <td data-sort="{{ row.n_uncertain }}">{{ row.n_uncertain }}</td>
             <td data-sort="{{ row.pct_uncertain }}">{{ row.pct_uncertain }}%</td>
+            <td data-sort="{{ row.mean_debris_pct if row.mean_debris_pct is not none else -1 }}">{{ row.mean_debris_pct if row.mean_debris_pct is not none else "n/a" }}</td>
             <td data-sort="{{ row.mean_threshold if row.mean_threshold is not none else -1 }}">{{ row.mean_threshold if row.mean_threshold is not none else "n/a" }}</td>
             <td data-sort="{{ row.mean_background if row.mean_background is not none else -1 }}">{{ row.mean_background if row.mean_background is not none else "n/a" }}</td>
           </tr>
@@ -424,6 +426,20 @@
       {% for channel in debris.scatter_html.keys() | sort %}
       <div class="channel-block{{ ' active' if loop.first else '' }}" data-group="debris" data-channel="{{ channel }}">
         {{ debris.scatter_html[channel] | safe }}
+
+        <h3>No debris (highest-ratio) examples</h3>
+        {% if debris.sample_images_untrustworthy.get(channel) %}
+        <div class="carousel" id="debris-carousel-untrustworthy-{{ channel }}">
+          <img class="qc-img" id="debris-carousel-img-untrustworthy-{{ channel }}" src="{{ debris.sample_images_untrustworthy[channel][0].data_uri }}">
+          <div class="carousel-caption" id="debris-carousel-caption-untrustworthy-{{ channel }}">{{ debris.sample_images_untrustworthy[channel][0].caption }} (1 / {{ debris.sample_images_untrustworthy[channel]|length }})</div>
+          <div class="carousel-controls">
+            <button onclick="debrisCarousel('untrustworthy', {{ channel }}, -1)">&larr; Prev</button>
+            <button onclick="debrisCarousel('untrustworthy', {{ channel }}, 1)">Next &rarr;</button>
+          </div>
+        </div>
+        {% else %}
+        <div class="missing">No "no debris" sample images available for this channel</div>
+        {% endif %}
 
         <h3>Uncertain examples</h3>
         {% if debris.sample_images_uncertain.get(channel) %}
@@ -525,6 +541,15 @@
 
   {% if debris.available %}
   const debrisImages = {
+    untrustworthy: {
+    {% for channel, images in debris.sample_images_untrustworthy.items() %}
+      {{ channel }}: [
+      {% for img in images %}
+        {src: {{ img.data_uri | tojson }}, caption: {{ img.caption | tojson }}},
+      {% endfor %}
+      ],
+    {% endfor %}
+    },
     uncertain: {
     {% for channel, images in debris.sample_images_uncertain.items() %}
       {{ channel }}: [

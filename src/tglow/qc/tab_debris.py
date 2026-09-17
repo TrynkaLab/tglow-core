@@ -1,7 +1,7 @@
 """Tab 7 (debris) - debris percentage vs threshold/mean ("mean/otsu") ratio per channel,
 per-plate/channel summary table, and clickable example image viewers for the
-"uncertain" (highest-debris) and "trustworthy" (highest-debris-that-still-passed)
-classes.
+"untrustworthy" (highest-ratio), "uncertain" (highest-debris) and "trustworthy"
+(highest-debris-that-still-passed) classes.
 
 Debris statistics are merged directly into measure_intensity's image_features output
 (one row per field) - see build_debris_statistics_wide in
@@ -38,8 +38,14 @@ log = logging.getLogger(__name__)
 CHANNEL_COLUMN_RE = re.compile(r"^ch(\d+)__debris_percentage$")
 
 DEBRIS_SAMPLE_RE = re.compile(
-    r"^(?P<plate>.+)_(?P<well>[A-Za-z]+\d+)_(?P<field>\d+)_ch(?P<channel>\d+)_(?P<sample_class>uncertain|trustworthy)_pct(?P<pct>[\d.]+)_debris\.png$"
+    r"^(?P<plate>.+)_(?P<well>[A-Za-z]+\d+)_(?P<field>\d+)_ch(?P<channel>\d+)_(?P<sample_class>untrustworthy|uncertain|trustworthy)_pct(?P<pct>[\d.]+)_ratio(?P<ratio>[\d.]+)_debris\.png$"
 )
+
+# "untrustworthy" samples are picked (and should be displayed) by highest ratio,
+# not highest debris % - the whole point of that class is that its debris % isn't
+# trustworthy - so it needs its own sort key, unlike the other two classes.
+SAMPLE_CLASS_SORT_KEY = {"untrustworthy": "_ratio"}
+DEFAULT_SAMPLE_SORT_KEY = "_pct"
 
 
 def available_channels(image_features):
@@ -84,7 +90,7 @@ def build_debris_scatter_plots(image_features, channels, debris_max_pct, ratio_m
 
 
 def build_debris_summary_table(image_features, channels, debris_max_pct, ratio_min):
-    """One row per channel (across all plates): n_total, the 3-way classification counts (+ pct), mean threshold/background.
+    """One row per channel (across all plates): n_total, the 3-way classification counts (+ pct), mean debris %/threshold/background.
 
     See the module docstring for the untrustworthy/trustworthy/uncertain
     definitions - every image with both stats present falls into exactly one.
@@ -115,6 +121,7 @@ def build_debris_summary_table(image_features, channels, debris_max_pct, ratio_m
             "pct_trustworthy": _pct(n_trustworthy),
             "n_uncertain": n_uncertain,
             "pct_uncertain": _pct(n_uncertain),
+            "mean_debris_pct": round(df[pct_col].mean(), 2) if n_total else None,
             "mean_threshold": round(image_features[threshold_col].mean(), 2) if threshold_col in image_features.columns else None,
             "mean_background": round(image_features[background_col].mean(), 2) if background_col in image_features.columns else None,
         }
@@ -144,7 +151,8 @@ def sample_debris_images(debris_samples_dir):
     """Group the highest-debris overlay PNGs written by make_debris_overlay.py by (sample_class, channel).
 
     Returns dict sample_class(str) -> dict channel(int) -> list of {"caption", "data_uri"},
-    each channel's list sorted by the embedded debris percentage descending (worst-of-class first).
+    each channel's list sorted worst-of-class first: by debris percentage descending,
+    except "untrustworthy" which sorts by ratio descending (see SAMPLE_CLASS_SORT_KEY).
     """
     if debris_samples_dir is None or not os.path.isdir(debris_samples_dir):
         return {}
@@ -163,16 +171,20 @@ def sample_debris_images(debris_samples_dir):
         sample_class = match.group("sample_class")
         channel = int(match.group("channel"))
         pct = float(match.group("pct"))
+        ratio = float(match.group("ratio"))
         by_class.setdefault(sample_class, {}).setdefault(channel, []).append({
-            "caption": f"{match.group('plate')} / {match.group('well')} / field {match.group('field')} (debris%={pct})",
+            "caption": f"{match.group('plate')} / {match.group('well')} / field {match.group('field')} (debris%={pct}, ratio={ratio})",
             "data_uri": data_uri,
             "_pct": pct,
+            "_ratio": ratio,
         })
 
-    for channels in by_class.values():
+    for sample_class, channels in by_class.items():
+        sort_key = SAMPLE_CLASS_SORT_KEY.get(sample_class, DEFAULT_SAMPLE_SORT_KEY)
         for images in channels.values():
-            images.sort(key=lambda img: img["_pct"], reverse=True)
+            images.sort(key=lambda img: img[sort_key], reverse=True)
             for img in images:
                 del img["_pct"]
+                del img["_ratio"]
 
     return by_class
