@@ -62,7 +62,7 @@ def build_general_tab(measurements, blacklist_df, registration_manifest_path, pl
     }
 
 
-def build_registration_tab(object_features, pattern, threshold, registration_images_dir, n_samples, rg_params):
+def build_registration_tab(object_features, pattern, threshold, registration_images_dir, n_samples):
     stats = tab_registration.build_registration_stats(object_features, pattern, threshold)
     if not stats["available"]:
         return {"available": False}
@@ -73,7 +73,7 @@ def build_registration_tab(object_features, pattern, threshold, registration_ima
     return {
         "available": True,
         "stats": stats,
-        "params": {"sc_registration_pattern": pattern, "sc_registration_thresh": threshold, **rg_params},
+        "params": {"sc_registration_pattern": pattern, "sc_registration_thresh": threshold},
         "density_html": fig_to_div(density_fig),
         "sample_images": images,
     }
@@ -184,7 +184,6 @@ def build_report(
     qc_registration_pattern="registration_corr",
     qc_plate_format="auto",
     qc_n_sample_registration=10,
-    rg_params=None,
     qc_debris_max_pct=10.0,
     qc_debris_min_ratio=1.2,
     show_flatfield=False,
@@ -223,7 +222,7 @@ def build_report(
         "general": build_general_tab(measurements, blacklist_df, registration_manifest_path, plate_formats),
         "registration": build_registration_tab(
             measurements.object_features, qc_registration_pattern, qc_regcor,
-            registration_images_dir, qc_n_sample_registration, rg_params or {},
+            registration_images_dir, qc_n_sample_registration,
         ),
         "intensity": build_intensity_tab(measurements.object_features, qc_registration_pattern, qc_regcor, plate_formats),
         "debris": build_debris_tab(measurements.image_features, qc_debris_max_pct, qc_debris_min_ratio, debris_samples_dir),
