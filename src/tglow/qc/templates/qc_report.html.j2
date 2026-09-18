@@ -174,37 +174,48 @@
         </table>
       </div>
 
-      <h3>Sample registration images</h3>
-      {% if registration.sample_images %}
-      <div class="carousel" id="reg-carousel">
-        {# src/caption are filled in by regCarousel(0) below rather than inlined here -
-           the data URI is already in regImages, and inlining it again doubles the
-           bytes for every carousel's first image. #}
-        <img class="qc-img" id="reg-carousel-img" alt="">
-        <div class="carousel-caption" id="reg-carousel-caption"></div>
+      {# Worst first - a bad alignment is what you open this tab to find. #}
+      {% for group, label in [("worst", "Worst aligning fields"), ("best", "Best aligning fields")] %}
+      <h3>{{ label }}</h3>
+      {% set images = registration["sample_images_" ~ group] %}
+      {% if images %}
+      <div class="carousel" id="reg-carousel-{{ group }}">
+        {# src/caption are filled in by regCarousel below rather than inlined here - the
+           data URI is already in regImages, and inlining it again doubles the bytes for
+           every carousel's first image. #}
+        <img class="qc-img" id="reg-carousel-img-{{ group }}" alt="">
+        <div class="carousel-caption" id="reg-carousel-caption-{{ group }}"></div>
         <div class="carousel-controls">
-          <button onclick="regCarousel(-1)">&larr; Prev</button>
-          <button onclick="regCarousel(1)">Next &rarr;</button>
+          <button onclick="regCarousel('{{ group }}', -1)">&larr; Prev</button>
+          <button onclick="regCarousel('{{ group }}', 1)">Next &rarr;</button>
         </div>
       </div>
-      <script>
-        const regImages = [
-        {% for img in registration.sample_images %}
-          {src: {{ img.data_uri | tojson }}, caption: {{ img.caption | tojson }}},
-        {% endfor %}
-        ];
-        let regIdx = 0;
-        function regCarousel(delta) {
-          regIdx = (regIdx + delta + regImages.length) % regImages.length;
-          document.getElementById('reg-carousel-img').src = regImages[regIdx].src;
-          document.getElementById('reg-carousel-caption').textContent = regImages[regIdx].caption + ' (' + (regIdx + 1) + ' / ' + regImages.length + ')';
-        }
-        // Render the first image - delta 0 leaves the index alone
-        regCarousel(0);
-      </script>
       {% else %}
-      <div class="missing">No registration sample images available (rg_plot may be disabled, or none were found)</div>
+      <div class="missing">No {{ label|lower }} available (rg_plot may be disabled, no registration images were found, or no field had at least {{ registration.params.qc_min_cells_registration }} cells)</div>
       {% endif %}
+      {% endfor %}
+      <script>
+        const regImages = {
+        {% for group in ["worst", "best"] %}
+          {{ group }}: [
+          {% for img in registration["sample_images_" ~ group] %}
+            {src: {{ img.data_uri | tojson }}, caption: {{ img.caption | tojson }}},
+          {% endfor %}
+          ],
+        {% endfor %}
+        };
+        const regIdx = {};
+        function regCarousel(group, delta) {
+          const images = regImages[group];
+          if (!images || !images.length) return;
+          const next = ((regIdx[group] || 0) + delta + images.length) % images.length;
+          regIdx[group] = next;
+          document.getElementById('reg-carousel-img-' + group).src = images[next].src;
+          document.getElementById('reg-carousel-caption-' + group).textContent = images[next].caption + ' (' + (next + 1) + ' / ' + images.length + ')';
+        }
+        // Render each carousel's first image - delta 0 leaves the index alone
+        Object.keys(regImages).forEach(group => regCarousel(group, 0));
+      </script>
     </div>
   </div>
 </section>
