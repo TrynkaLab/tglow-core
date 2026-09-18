@@ -168,9 +168,9 @@ def build_debris_tab(image_features, debris_max_pct, ratio_min, debris_samples_d
         "params": params,
         "summary_table": summary_table,
         "scatter_html": {channel: fig_to_div(fig) for channel, fig in scatter_plots.items()},
-        "sample_images_untrustworthy": {channel: sample_images_by_class.get("untrustworthy", {}).get(channel, []) for channel in channels},
+        "sample_images_no_debris": {channel: sample_images_by_class.get("no_debris", {}).get(channel, []) for channel in channels},
         "sample_images_uncertain": {channel: sample_images_by_class.get("uncertain", {}).get(channel, []) for channel in channels},
-        "sample_images_trustworthy": {channel: sample_images_by_class.get("trustworthy", {}).get(channel, []) for channel in channels},
+        "sample_images_debris": {channel: sample_images_by_class.get("debris", {}).get(channel, []) for channel in channels},
     }
 
 

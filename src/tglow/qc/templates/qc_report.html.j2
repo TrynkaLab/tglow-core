@@ -408,10 +408,10 @@
           <tr>
             <td data-sort="{{ row.channel }}">{{ row.channel }}</td>
             <td data-sort="{{ row.n_total }}">{{ row.n_total }}</td>
-            <td data-sort="{{ row.n_untrustworthy }}">{{ row.n_untrustworthy }}</td>
-            <td data-sort="{{ row.pct_untrustworthy }}">{{ row.pct_untrustworthy }}%</td>
-            <td data-sort="{{ row.n_trustworthy }}">{{ row.n_trustworthy }}</td>
-            <td data-sort="{{ row.pct_trustworthy }}">{{ row.pct_trustworthy }}%</td>
+            <td data-sort="{{ row.n_no_debris }}">{{ row.n_no_debris }}</td>
+            <td data-sort="{{ row.pct_no_debris }}">{{ row.pct_no_debris }}%</td>
+            <td data-sort="{{ row.n_debris }}">{{ row.n_debris }}</td>
+            <td data-sort="{{ row.pct_debris }}">{{ row.pct_debris }}%</td>
             <td data-sort="{{ row.n_uncertain }}">{{ row.n_uncertain }}</td>
             <td data-sort="{{ row.pct_uncertain }}">{{ row.pct_uncertain }}%</td>
             <td data-sort="{{ row.mean_debris_pct if row.mean_debris_pct is not none else -1 }}">{{ row.mean_debris_pct if row.mean_debris_pct is not none else "n/a" }}</td>
@@ -428,13 +428,13 @@
         {{ debris.scatter_html[channel] | safe }}
 
         <h3>No debris (highest-ratio) examples</h3>
-        {% if debris.sample_images_untrustworthy.get(channel) %}
-        <div class="carousel" id="debris-carousel-untrustworthy-{{ channel }}">
-          <img class="qc-img" id="debris-carousel-img-untrustworthy-{{ channel }}" src="{{ debris.sample_images_untrustworthy[channel][0].data_uri }}">
-          <div class="carousel-caption" id="debris-carousel-caption-untrustworthy-{{ channel }}">{{ debris.sample_images_untrustworthy[channel][0].caption }} (1 / {{ debris.sample_images_untrustworthy[channel]|length }})</div>
+        {% if debris.sample_images_no_debris.get(channel) %}
+        <div class="carousel" id="debris-carousel-no_debris-{{ channel }}">
+          <img class="qc-img" id="debris-carousel-img-no_debris-{{ channel }}" src="{{ debris.sample_images_no_debris[channel][0].data_uri }}">
+          <div class="carousel-caption" id="debris-carousel-caption-no_debris-{{ channel }}">{{ debris.sample_images_no_debris[channel][0].caption }} (1 / {{ debris.sample_images_no_debris[channel]|length }})</div>
           <div class="carousel-controls">
-            <button onclick="debrisCarousel('untrustworthy', {{ channel }}, -1)">&larr; Prev</button>
-            <button onclick="debrisCarousel('untrustworthy', {{ channel }}, 1)">Next &rarr;</button>
+            <button onclick="debrisCarousel('no_debris', {{ channel }}, -1)">&larr; Prev</button>
+            <button onclick="debrisCarousel('no_debris', {{ channel }}, 1)">Next &rarr;</button>
           </div>
         </div>
         {% else %}
@@ -456,13 +456,13 @@
         {% endif %}
 
         <h3>Debris (highest-debris) examples</h3>
-        {% if debris.sample_images_trustworthy.get(channel) %}
-        <div class="carousel" id="debris-carousel-trustworthy-{{ channel }}">
-          <img class="qc-img" id="debris-carousel-img-trustworthy-{{ channel }}" src="{{ debris.sample_images_trustworthy[channel][0].data_uri }}">
-          <div class="carousel-caption" id="debris-carousel-caption-trustworthy-{{ channel }}">{{ debris.sample_images_trustworthy[channel][0].caption }} (1 / {{ debris.sample_images_trustworthy[channel]|length }})</div>
+        {% if debris.sample_images_debris.get(channel) %}
+        <div class="carousel" id="debris-carousel-debris-{{ channel }}">
+          <img class="qc-img" id="debris-carousel-img-debris-{{ channel }}" src="{{ debris.sample_images_debris[channel][0].data_uri }}">
+          <div class="carousel-caption" id="debris-carousel-caption-debris-{{ channel }}">{{ debris.sample_images_debris[channel][0].caption }} (1 / {{ debris.sample_images_debris[channel]|length }})</div>
           <div class="carousel-controls">
-            <button onclick="debrisCarousel('trustworthy', {{ channel }}, -1)">&larr; Prev</button>
-            <button onclick="debrisCarousel('trustworthy', {{ channel }}, 1)">Next &rarr;</button>
+            <button onclick="debrisCarousel('debris', {{ channel }}, -1)">&larr; Prev</button>
+            <button onclick="debrisCarousel('debris', {{ channel }}, 1)">Next &rarr;</button>
           </div>
         </div>
         {% else %}
@@ -541,8 +541,8 @@
 
   {% if debris.available %}
   const debrisImages = {
-    untrustworthy: {
-    {% for channel, images in debris.sample_images_untrustworthy.items() %}
+    no_debris: {
+    {% for channel, images in debris.sample_images_no_debris.items() %}
       {{ channel }}: [
       {% for img in images %}
         {src: {{ img.data_uri | tojson }}, caption: {{ img.caption | tojson }}},
@@ -559,8 +559,8 @@
       ],
     {% endfor %}
     },
-    trustworthy: {
-    {% for channel, images in debris.sample_images_trustworthy.items() %}
+    debris: {
+    {% for channel, images in debris.sample_images_debris.items() %}
       {{ channel }}: [
       {% for img in images %}
         {src: {{ img.data_uri | tojson }}, caption: {{ img.caption | tojson }}},
