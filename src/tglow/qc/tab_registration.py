@@ -12,9 +12,10 @@ import os
 import random
 import re
 
+import numpy as np
 import plotly.graph_objects as go
 
-from tglow.qc.assets import image_to_data_uri, style_plot
+from tglow.qc.assets import histogram_bar, image_to_data_uri, style_plot
 from tglow.qc.registration import filter_registration_correlation, registration_correlation_columns
 
 log = logging.getLogger(__name__)
@@ -52,22 +53,25 @@ def build_registration_stats(object_features, pattern, threshold):
 
 
 def build_correlation_density_plot(object_features, pattern, threshold):
-    """Density histogram of each registration-correlation column, with a line at `threshold`."""
+    """Density histogram of each registration-correlation column, with a line at `threshold`.
+
+    Binned here rather than in the browser (see assets.histogram_bar), which also
+    means the overlaid traces need one shared set of bin edges - Plotly's own
+    histogram traces negotiated that client-side.
+    """
     corr_cols = registration_correlation_columns(object_features, pattern)
     if not corr_cols:
         return None
 
+    values_by_col = {col: object_features[col].dropna().to_numpy() for col in corr_cols}
+    all_values = np.concatenate([v for v in values_by_col.values() if v.size]) if any(v.size for v in values_by_col.values()) else np.array([])
+    edges = np.histogram_bin_edges(all_values, bins=50) if all_values.size else 50
+
     fig = go.Figure()
     data_min, data_max = None, None
-    for col in corr_cols:
-        values = object_features[col].dropna()
-        fig.add_trace(go.Histogram(
-            x=values,
-            histnorm="probability density",
-            name=col,
-            opacity=0.6,
-        ))
-        if len(values):
+    for col, values in values_by_col.items():
+        fig.add_trace(histogram_bar(values, bins=edges, density=True, name=col, opacity=0.6))
+        if values.size:
             data_min = values.min() if data_min is None else min(data_min, values.min())
             data_max = values.max() if data_max is None else max(data_max, values.max())
 

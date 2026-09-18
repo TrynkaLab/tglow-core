@@ -177,8 +177,11 @@
       <h3>Sample registration images</h3>
       {% if registration.sample_images %}
       <div class="carousel" id="reg-carousel">
-        <img class="qc-img" id="reg-carousel-img" src="{{ registration.sample_images[0].data_uri }}">
-        <div class="carousel-caption" id="reg-carousel-caption">{{ registration.sample_images[0].caption }} (1 / {{ registration.sample_images|length }})</div>
+        {# src/caption are filled in by regCarousel(0) below rather than inlined here -
+           the data URI is already in regImages, and inlining it again doubles the
+           bytes for every carousel's first image. #}
+        <img class="qc-img" id="reg-carousel-img" alt="">
+        <div class="carousel-caption" id="reg-carousel-caption"></div>
         <div class="carousel-controls">
           <button onclick="regCarousel(-1)">&larr; Prev</button>
           <button onclick="regCarousel(1)">Next &rarr;</button>
@@ -196,6 +199,8 @@
           document.getElementById('reg-carousel-img').src = regImages[regIdx].src;
           document.getElementById('reg-carousel-caption').textContent = regImages[regIdx].caption + ' (' + (regIdx + 1) + ' / ' + regImages.length + ')';
         }
+        // Render the first image - delta 0 leaves the index alone
+        regCarousel(0);
       </script>
       {% else %}
       <div class="missing">No registration sample images available (rg_plot may be disabled, or none were found)</div>
@@ -269,8 +274,9 @@
         <h3>Before / after (max projected, registration-merged)</h3>
         {% if decon.before_after.get(channel) %}
         <div class="carousel" id="decon-carousel-{{ channel }}">
-          <img class="qc-img" id="decon-carousel-img-{{ channel }}" src="{{ decon.before_after[channel][0].data_uri }}">
-          <div class="carousel-caption" id="decon-carousel-caption-{{ channel }}">{{ decon.before_after[channel][0].caption }} (1 / {{ decon.before_after[channel]|length }})</div>
+          {# Filled in by deconCarousel(channel, 0) - see the note on reg-carousel-img #}
+          <img class="qc-img" id="decon-carousel-img-{{ channel }}" alt="">
+          <div class="carousel-caption" id="decon-carousel-caption-{{ channel }}"></div>
           <div class="carousel-controls">
             <button onclick="deconCarousel({{ channel }}, -1)">&larr; Prev</button>
             <button onclick="deconCarousel({{ channel }}, 1)">Next &rarr;</button>
@@ -430,8 +436,9 @@
         <h3>No debris (highest-ratio) examples</h3>
         {% if debris.sample_images_no_debris.get(channel) %}
         <div class="carousel" id="debris-carousel-no_debris-{{ channel }}">
-          <img class="qc-img" id="debris-carousel-img-no_debris-{{ channel }}" src="{{ debris.sample_images_no_debris[channel][0].data_uri }}">
-          <div class="carousel-caption" id="debris-carousel-caption-no_debris-{{ channel }}">{{ debris.sample_images_no_debris[channel][0].caption }} (1 / {{ debris.sample_images_no_debris[channel]|length }})</div>
+          {# Filled in by debrisCarousel('no_debris', channel, 0) - see the note on reg-carousel-img #}
+          <img class="qc-img" id="debris-carousel-img-no_debris-{{ channel }}" alt="">
+          <div class="carousel-caption" id="debris-carousel-caption-no_debris-{{ channel }}"></div>
           <div class="carousel-controls">
             <button onclick="debrisCarousel('no_debris', {{ channel }}, -1)">&larr; Prev</button>
             <button onclick="debrisCarousel('no_debris', {{ channel }}, 1)">Next &rarr;</button>
@@ -444,8 +451,9 @@
         <h3>Uncertain examples</h3>
         {% if debris.sample_images_uncertain.get(channel) %}
         <div class="carousel" id="debris-carousel-uncertain-{{ channel }}">
-          <img class="qc-img" id="debris-carousel-img-uncertain-{{ channel }}" src="{{ debris.sample_images_uncertain[channel][0].data_uri }}">
-          <div class="carousel-caption" id="debris-carousel-caption-uncertain-{{ channel }}">{{ debris.sample_images_uncertain[channel][0].caption }} (1 / {{ debris.sample_images_uncertain[channel]|length }})</div>
+          {# Filled in by debrisCarousel('uncertain', channel, 0) - see the note on reg-carousel-img #}
+          <img class="qc-img" id="debris-carousel-img-uncertain-{{ channel }}" alt="">
+          <div class="carousel-caption" id="debris-carousel-caption-uncertain-{{ channel }}"></div>
           <div class="carousel-controls">
             <button onclick="debrisCarousel('uncertain', {{ channel }}, -1)">&larr; Prev</button>
             <button onclick="debrisCarousel('uncertain', {{ channel }}, 1)">Next &rarr;</button>
@@ -458,8 +466,9 @@
         <h3>Debris (highest-debris) examples</h3>
         {% if debris.sample_images_debris.get(channel) %}
         <div class="carousel" id="debris-carousel-debris-{{ channel }}">
-          <img class="qc-img" id="debris-carousel-img-debris-{{ channel }}" src="{{ debris.sample_images_debris[channel][0].data_uri }}">
-          <div class="carousel-caption" id="debris-carousel-caption-debris-{{ channel }}">{{ debris.sample_images_debris[channel][0].caption }} (1 / {{ debris.sample_images_debris[channel]|length }})</div>
+          {# Filled in by debrisCarousel('debris', channel, 0) - see the note on reg-carousel-img #}
+          <img class="qc-img" id="debris-carousel-img-debris-{{ channel }}" alt="">
+          <div class="carousel-caption" id="debris-carousel-caption-debris-{{ channel }}"></div>
           <div class="carousel-controls">
             <button onclick="debrisCarousel('debris', {{ channel }}, -1)">&larr; Prev</button>
             <button onclick="debrisCarousel('debris', {{ channel }}, 1)">Next &rarr;</button>
@@ -537,6 +546,9 @@
     document.getElementById('decon-carousel-img-' + channel).src = images[next].src;
     document.getElementById('decon-carousel-caption-' + channel).textContent = images[next].caption + ' (' + (next + 1) + ' / ' + images.length + ')';
   }
+  // Render each carousel's first image - delta 0 leaves the index alone. Channels with
+  // no images are skipped by the guard inside deconCarousel.
+  Object.keys(deconImages).forEach(channel => deconCarousel(channel, 0));
   {% endif %}
 
   {% if debris.available %}
@@ -579,6 +591,8 @@
     document.getElementById('debris-carousel-img-' + sampleClass + '-' + channel).src = images[next].src;
     document.getElementById('debris-carousel-caption-' + sampleClass + '-' + channel).textContent = images[next].caption + ' (' + (next + 1) + ' / ' + images.length + ')';
   }
+  Object.entries(debrisImages).forEach(([sampleClass, byChannel]) =>
+    Object.keys(byChannel).forEach(channel => debrisCarousel(sampleClass, channel, 0)));
   {% endif %}
 
   function sortTable(table, col, type) {

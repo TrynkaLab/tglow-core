@@ -1,4 +1,5 @@
-"""Base64-inlining helpers so the QC report can be a single, offline-viewable HTML file."""
+"""Base64-inlining and shared plot helpers, so the QC report can be a single,
+offline-viewable HTML file that doesn't grow without bound."""
 
 import base64
 import logging
@@ -7,6 +8,7 @@ import os
 
 import cv2
 import numpy as np
+import plotly.graph_objects as go
 
 log = logging.getLogger(__name__)
 
@@ -15,6 +17,82 @@ log = logging.getLogger(__name__)
 # PNGs makes for a multi-hundred-MB report. Large enough to stay readable at the
 # report's own display size (images render at max-width: 100% of a ~320-580px tile).
 MAX_IMAGE_DIMENSION = 900
+
+# Embedded images are re-encoded as WebP rather than PNG: they're all 8-bit display
+# renderings (matplotlib figures, overlay crops), and at this quality WebP is roughly
+# 15x smaller than PNG for the same frame - which matters doubly once base64 inflates
+# whatever we produce by a further 33%. PNG stays the fallback for anything that isn't
+# 8-bit, where a lossy re-encode would need a normalization choice this helper has no
+# business making, and for OpenCV builds without WebP support.
+IMAGE_FORMAT = ".webp"
+IMAGE_ENCODE_PARAMS = [cv2.IMWRITE_WEBP_QUALITY, 80]
+IMAGE_MIME = "image/webp"
+
+_webp_available = None
+
+
+def _webp_supported():
+    """One-off probe - WebP support depends on how the installed OpenCV was built.
+
+    Cached (and warned about once) rather than per image, so a build without it
+    degrades to PNG quietly instead of logging for every sample in the report.
+    """
+    global _webp_available
+
+    if _webp_available is None:
+        try:
+            ok, _ = cv2.imencode(IMAGE_FORMAT, np.zeros((2, 2, 3), np.uint8), IMAGE_ENCODE_PARAMS)
+            _webp_available = bool(ok)
+        except cv2.error:
+            _webp_available = False
+
+        if not _webp_available:
+            log.warning("This OpenCV build cannot encode WebP - embedding images as PNG instead (larger report)")
+
+    return _webp_available
+
+
+def _encode_image(image):
+    """Encode an image array for inlining, returning (buffer, mime).
+
+    Drops a fully-opaque alpha channel first: matplotlib writes RGBA PNGs by
+    default, and an all-255 alpha plane is a quarter of the pixel data carrying
+    no information. A non-opaque alpha is kept, since flattening it would turn
+    transparent regions black.
+    """
+    if image.ndim == 3 and image.shape[2] == 4 and (image[:, :, 3] == 255).all():
+        image = image[:, :, :3]
+
+    if image.dtype == np.uint8 and _webp_supported():
+        ok, buffer = cv2.imencode(IMAGE_FORMAT, image, IMAGE_ENCODE_PARAMS)
+        if ok:
+            return buffer, IMAGE_MIME
+        log.warning(f"WebP encoding produced no data for a {image.shape} {image.dtype} image - falling back to PNG")
+
+    ok, buffer = cv2.imencode(".png", image)
+    return (buffer, "image/png") if ok else (None, None)
+
+
+def histogram_bar(values, bins=50, density=False, **bar_kwargs):
+    """A pre-binned histogram as a go.Bar trace.
+
+    go.Histogram bins client-side, which means the trace embeds every raw value in
+    the HTML. With one trace per channel/feature over every qc'ed cell that becomes
+    the single largest thing in the report - hundreds of MB on a large run, versus
+    the ~8 KB this produces regardless of cell count. The rendered chart is
+    equivalent; what's lost is Plotly re-binning as you zoom.
+
+    bins accepts anything np.histogram does, so callers overlaying several
+    distributions can pass a shared set of edges to keep them comparable.
+    """
+    values = np.asarray(values, dtype=float)
+    values = values[np.isfinite(values)]
+
+    if values.size == 0:
+        return go.Bar(x=[], y=[], **bar_kwargs)
+
+    counts, edges = np.histogram(values, bins=bins, density=density)
+    return go.Bar(x=(edges[:-1] + edges[1:]) / 2, y=counts, width=np.diff(edges), **bar_kwargs)
 
 
 def image_to_data_uri(path, max_dimension=MAX_IMAGE_DIMENSION):
@@ -37,12 +115,12 @@ def image_to_data_uri(path, max_dimension=MAX_IMAGE_DIMENSION):
         scale = max_dimension / longest_side
         image = cv2.resize(image, (max(1, round(width * scale)), max(1, round(height * scale))), interpolation=cv2.INTER_AREA)
 
-    ok, buffer = cv2.imencode(".png", image)
-    if not ok:
-        raise RuntimeError(f"Failed to re-encode {path} as PNG")
+    buffer, mime = _encode_image(image)
+    if buffer is None:
+        raise RuntimeError(f"Failed to re-encode {path} for inlining")
 
     encoded = base64.b64encode(np.asarray(buffer)).decode("ascii")
-    return f"data:image/png;base64,{encoded}"
+    return f"data:{mime};base64,{encoded}"
 
 
 def style_plot(fig, square=True, white_bg=True):

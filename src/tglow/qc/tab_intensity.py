@@ -12,7 +12,7 @@ import re
 
 import plotly.graph_objects as go
 
-from tglow.qc.assets import style_plot
+from tglow.qc.assets import histogram_bar, style_plot
 from tglow.qc.plate_layout import build_well_grid, style_heatmap_axes
 from tglow.qc.registration import filter_registration_correlation
 
@@ -76,14 +76,19 @@ def build_intensity_heatmaps(qced_df, channels, plate_formats):
 
 
 def build_intensity_distributions(qced_df, channels):
-    """dict[channel][feature_label] -> Plotly histogram of the raw per-cell values (all plates/wells)."""
+    """dict[channel][feature_label] -> Plotly histogram of the raw per-cell values (all plates/wells).
+
+    Binned here rather than in the browser (see assets.histogram_bar) - one raw
+    trace per channel x feature over every qc'ed cell is what makes the report
+    enormous.
+    """
     distributions = {}
 
     for channel in channels:
         distributions[channel] = {}
         for label, stat in FEATURES.items():
             col = f"ch{channel}__{stat}"
-            fig = go.Figure(data=go.Histogram(x=qced_df[col].dropna(), nbinsx=50))
+            fig = go.Figure(data=histogram_bar(qced_df[col], bins=50))
             fig.update_layout(title=f"Ch{channel} {label} intensity distribution (qc'ed cells)", xaxis_title=label, yaxis_title="Count")
             # Lives in the sidebar (see the template) rather than tab-main, so it must
             # not be forced square/fixed-width - and a bit shorter fits the sidebar
