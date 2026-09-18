@@ -14,18 +14,29 @@ log = logging.getLogger(__name__)
 
 # Every embedded image gets downscaled to fit within this on either side before
 # base64-inlining - otherwise a run with many high-res flatfield/registration/decon
-# PNGs makes for a multi-hundred-MB report. Large enough to stay readable at the
-# report's own display size (images render at max-width: 100% of a ~320-580px tile).
-MAX_IMAGE_DIMENSION = 900
+# PNGs makes for a multi-hundred-MB report. The carousels display at up to 900 CSS px
+# (.carousel's max-width in the template), so 1200 leaves ~1.33x pixel density: crisp
+# on a HiDPI screen and with a little room to zoom. Flatfield tiles are smaller again
+# (~320px grid items) and are oversampled either way. Trades off directly against
+# IMAGE_ENCODE_PARAMS below - more pixels at lower quality generally reads sharper than
+# the reverse, which is why that quality dropped to 70 as this went up.
+MAX_IMAGE_DIMENSION = 1200
 
 # Embedded images are re-encoded as WebP rather than PNG: they're all 8-bit display
-# renderings (matplotlib figures, overlay crops), and at this quality WebP is roughly
-# 15x smaller than PNG for the same frame - which matters doubly once base64 inflates
-# whatever we produce by a further 33%. PNG stays the fallback for anything that isn't
-# 8-bit, where a lossy re-encode would need a normalization choice this helper has no
-# business making, and for OpenCV builds without WebP support.
+# renderings (matplotlib figures, overlay crops), where WebP measured 4-5x smaller than
+# the equivalent PNG - which matters doubly once base64 inflates whatever we produce by
+# a further 33%. PNG stays the fallback for anything that isn't 8-bit, where a lossy
+# re-encode would need a normalization choice this helper has no business making, and
+# for OpenCV builds without WebP support.
+#
+# Quality 70 rather than 80 is the other half of raising MAX_IMAGE_DIMENSION to 1200:
+# q70 at 1200px costs about 1.4x what q80 at 900px did (q80 at 1200px would be 2.1x)
+# while carrying a third more pixels, and on a downscaled grayscale frame the extra
+# resolution reads sharper than the extra quality. The thing to re-check if this is
+# lowered further is the debris overlay's thin red contour - fine linework is what
+# lossy compression damages first.
 IMAGE_FORMAT = ".webp"
-IMAGE_ENCODE_PARAMS = [cv2.IMWRITE_WEBP_QUALITY, 80]
+IMAGE_ENCODE_PARAMS = [cv2.IMWRITE_WEBP_QUALITY, 70]
 IMAGE_MIME = "image/webp"
 
 _webp_available = None
