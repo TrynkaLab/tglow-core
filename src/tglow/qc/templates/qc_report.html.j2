@@ -34,6 +34,13 @@
   table.stats td.label { opacity: 0.7; }
   table.stats td:last-child { text-align: right; font-weight: 500; }
   table.stats tr:last-child td { border-bottom: none; }
+  /* Tab 6 scaling warnings (scaling_warnings.tsv, written by calculate/consensus_scaling_factors) */
+  .warn-box { background: rgba(220, 150, 30, 0.10); border: 1px solid rgba(220, 150, 30, 0.35); border-left-width: 4px; border-radius: 8px; padding: 0.75rem 1rem; margin-bottom: 1.5rem; }
+  .warn-box h3 { margin: 0 0 0.5rem; font-size: 0.95rem; }
+  .warn-box-empty { background: rgba(136, 136, 136, 0.07); border-color: rgba(136, 136, 136, 0.25); }
+  .warn-none { margin: 0; font-size: 0.85rem; opacity: 0.7; }
+  table.warn-table td.warn-msg { text-align: left; font-weight: 400; font-size: 0.8rem; }
+  table.warn-table th { text-align: left; padding: 0.3rem 0.4rem; font-size: 0.75rem; opacity: 0.6; text-transform: uppercase; letter-spacing: 0.04em; }
   table.data-table { border-collapse: collapse; width: 100%; margin-bottom: 1.5rem; }
   table.data-table th, table.data-table td { padding: 0.4rem 0.6rem; font-size: 0.85rem; border-bottom: 1px solid rgba(136, 136, 136, 0.18); text-align: left; }
   table.data-table th { font-weight: 600; opacity: 0.8; }
@@ -369,6 +376,27 @@
     </aside>
 
     <div class="tab-main">
+      {% if scaling.warnings_checked %}
+      <div class="warn-box{{ ' warn-box-empty' if not scaling.warnings else '' }}">
+        <h3>Warnings</h3>
+        {% if scaling.warnings %}
+        <table class="stats warn-table">
+          <tr><th>Source</th><th>Category</th><th>Channel</th><th>Message</th></tr>
+          {% for w in scaling.warnings %}
+          <tr>
+            <td class="label">{{ w.source }}</td>
+            <td class="label">{{ w.category }}</td>
+            <td class="label">{{ w.channel }}</td>
+            <td class="warn-msg">{{ w.message }}</td>
+          </tr>
+          {% endfor %}
+        </table>
+        {% else %}
+        <p class="warn-none">No warnings were raised while deriving the scaling factors.</p>
+        {% endif %}
+      </div>
+      {% endif %}
+
       {{ scaling.barplot_html | safe }}
 
       <h3>Sigmoid curves</h3>

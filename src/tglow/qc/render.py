@@ -20,6 +20,7 @@ import pandas as pd
 from tglow.qc import aggregate, tab_debris, tab_decon, tab_flatfield, tab_intensity, tab_registration, tab_scaling
 from tglow.qc.assets import image_to_data_uri
 from tglow.qc.plate_layout import infer_plate_formats
+from tglow.qc.warning_log import load_warnings
 
 log = logging.getLogger(__name__)
 
@@ -141,16 +142,26 @@ def build_intensity_tab(object_features, pattern, threshold, plate_formats):
     }
 
 
-def build_scaling_tab(scaling_index_path, sc_params):
+def build_scaling_tab(scaling_index_path, sc_params, scaling_warnings_paths=None):
+    """Tab 6. scaling_warnings_paths are the scaling_warnings.tsv files written by
+    calculate_scaling_factors/consensus_scaling_factors - surfaced here so the warnings
+    sit next to the factors they are about, rather than only in the task's .command.err.
+    """
     scaling_index = tab_scaling.load_scaling_index(scaling_index_path)
     barplot = tab_scaling.build_scale_factor_barplot(scaling_index)
     sigmoid_plots = tab_scaling.build_sigmoid_plots(scaling_index)
+
+    warnings_df = load_warnings(scaling_warnings_paths)
 
     return {
         "available": True,
         "params": sc_params,
         "barplot_html": fig_to_div(barplot),
         "sigmoid_html": {channel: fig_to_div(fig) for channel, fig in sigmoid_plots.items()},
+        # A present-but-empty list renders as "no warnings", which is itself informative -
+        # it distinguishes "the scaling scripts ran cleanly" from "no warnings file exists".
+        "warnings": warnings_df.to_dict("records"),
+        "warnings_checked": scaling_warnings_paths is not None,
     }
 
 
@@ -202,6 +213,7 @@ def build_report(
     show_scaling=False,
     scaling_index_path=None,
     sc_params=None,
+    scaling_warnings_paths=None,
     debris_samples_dir=None,
     pipeline_version=None,
 ):
@@ -246,7 +258,7 @@ def build_report(
         context["decon"] = build_decon_tab(decon_samples_dir, dc_params or {})
 
     if show_scaling:
-        context["scaling"] = build_scaling_tab(scaling_index_path, sc_params or {})
+        context["scaling"] = build_scaling_tab(scaling_index_path, sc_params or {}, scaling_warnings_paths)
 
     template_source = resources.files("tglow.qc").joinpath("templates", "qc_report.html.j2").read_text()
     env = jinja2.Environment(autoescape=False, trim_blocks=True, lstrip_blocks=True)
