@@ -59,7 +59,13 @@ def build_sigmoid_plots(scaling_index, n_points=200):
             xaxis_title="Intensity",
             yaxis_title="Sigmoid weight",
         )
-        style_plot(fig)
+        # square=False drops style_plot's fixed 480x480 so the curve spans the full column
+        # width: it is read along the intensity axis, and several plates' curves sit close
+        # together in x, so horizontal room is what makes them separable. Width is left to the
+        # container rather than pinned, which would overflow the sidebar layout on a narrower
+        # window; only the height is fixed.
+        style_plot(fig, square=False)
+        fig.update_layout(height=460)
         figures[channel] = fig
 
     return figures

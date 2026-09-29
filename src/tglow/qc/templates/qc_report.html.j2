@@ -39,6 +39,19 @@
   .warn-box h3 { margin: 0 0 0.5rem; font-size: 0.95rem; }
   .warn-box-empty { background: rgba(136, 136, 136, 0.07); border-color: rgba(136, 136, 136, 0.25); }
   .warn-none { margin: 0; font-size: 0.85rem; opacity: 0.7; }
+  /* Per-tab "Explanation" block - collapsed by default so the tab still opens on its data */
+  .explain { border: 1px solid rgba(136, 136, 136, 0.28); border-radius: 8px; margin-bottom: 1.5rem; background: rgba(136, 136, 136, 0.05); }
+  .explain > summary { cursor: pointer; padding: 0.55rem 0.9rem; font-weight: 600; font-size: 0.9rem; list-style: none; user-select: none; }
+  .explain > summary::-webkit-details-marker { display: none; }
+  .explain > summary::before { content: "\25B8"; display: inline-block; margin-right: 0.5rem; transition: transform 0.15s; opacity: 0.6; }
+  .explain[open] > summary::before { transform: rotate(90deg); }
+  .explain[open] > summary { border-bottom: 1px solid rgba(136, 136, 136, 0.22); }
+  /* Capped measure for readability, centred in the block rather than left-aligned against it */
+  .explain-body { padding: 0.9rem 1.1rem; font-size: 0.87rem; line-height: 1.55; max-width: 60rem; margin-inline: auto; }
+  .explain-body > *:first-child { margin-top: 0; }
+  .explain-body > *:last-child { margin-bottom: 0; }
+  .explain-body ul, .explain-body ol { padding-left: 1.3rem; margin: 0.5rem 0; }
+  .explain-body li { margin-bottom: 0.3rem; }
   table.warn-table td.warn-msg { text-align: left; font-weight: 400; font-size: 0.8rem; }
   table.warn-table th { text-align: left; padding: 0.3rem 0.4rem; font-size: 0.75rem; opacity: 0.6; text-transform: uppercase; letter-spacing: 0.04em; }
   table.data-table { border-collapse: collapse; width: 100%; margin-bottom: 1.5rem; }
@@ -71,6 +84,14 @@
     .tab-sidebar { position: static; flex: 1 1 auto; width: 100%; max-height: none; }
   }
   .grid { display: flex; flex-wrap: wrap; gap: 1rem; }
+  /* Modifier, not a change to .grid itself - the flatfield tab's grid stays left-aligned */
+  .grid-center { justify-content: center; }
+  /* Two plates side by side on the intensity tab - they share a color scale, so the
+     comparison only works when both are in view at once. minmax(0,1fr) lets the
+     responsive Plotly divs shrink instead of forcing the row wider than the column. */
+  .heatmap-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+  .heatmap-grid > div { min-width: 0; }
+  @media (max-width: 900px) { .heatmap-grid { grid-template-columns: 1fr; } }
   .grid-item { min-width: 320px; }
   select { padding: 0.3rem 0.6rem; font-size: 0.95rem; margin: 0 0.5rem 1rem 0; }
   .plate-block { display: none; }
@@ -101,6 +122,17 @@
 </style>
 </head>
 <body>
+
+{# Collapsed-by-default "Explanation" block, one per tab. Uses <details> so it needs no JS
+   and still prints/searches correctly when collapsed. Called as {% call explanation() %}. #}
+{% macro explanation() %}
+<details class="explain">
+  <summary>Explanation</summary>
+  <div class="explain-body">
+{{ caller() }}
+  </div>
+</details>
+{% endmacro %}
 
 <div class="page-head">
   <header><div class="inner"><h1>TGlow QC report</h1><p class="run-date">Generated {{ generated_at }}</p></div></header>
@@ -133,6 +165,26 @@
 <!-- ==================== Tab 1: General QC ==================== -->
 <section id="tab-general" class="tab-content active">
   <h2>General QC</h2>
+  {% call explanation() %}
+  <p>A run-level summary of what was actually processed and segmented, intended as the first sanity
+  check before looking at any of the other tabs. Every count here is derived from the per-cell and
+  per-image measurements produced on the <em>unscaled</em> finalized images, so it reflects the data
+  all downstream tabs are built from.</p>
+  <ul>
+    <li><strong>Cells</strong> and <strong>mean cells / well</strong> are the headline segmentation
+    yield. A mean well below what the assay expects usually points at segmentation or focus problems
+    rather than at the plating.</li>
+    <li><strong>Images without cells</strong> counts fields where segmentation returned nothing. A
+    handful is normal at plate edges; a large number is worth investigating.</li>
+    <li><strong>Blacklisted wells</strong> are wells excluded up front by the blacklist file, not
+    wells that failed any QC computed here.</li>
+    <li><strong>Cycles</strong> is the number of imaging cycles merged into each final image. Anything
+    other than 1 means registration ran, and the Registration tab applies.</li>
+  </ul>
+  <p>The cells-per-well heatmaps show the spatial distribution of the segmentation yield across each
+  plate. Read these for <em>patterns</em> rather than absolute numbers: edge effects, row or column
+  gradients, and isolated dead wells are all far easier to see here than in the totals above.</p>
+  {% endcall %}
   <div class="stats-box">
     <div class="metrics">
       <div class="metric hero"><div class="value">{{ general.stats.n_cells }}</div><div class="label">Cells</div></div>
@@ -150,7 +202,7 @@
   </div>
 
   <h3>Cells per well</h3>
-  <div class="grid">
+  <div class="grid grid-center">
   {% for plate, html in general.cells_per_well_html.items() %}
     <div class="grid-item">{{ html | safe }}</div>
   {% endfor %}
@@ -161,6 +213,26 @@
 {% if registration.available %}
 <section id="tab-registration" class="tab-content">
   <h2>Registration</h2>
+  {% call explanation() %}
+  <p>When a run images the same plate over several cycles, the cycles have to be aligned before their
+  channels can be merged into one image. Alignment is estimated per field by phase cross-correlation
+  between the reference cycle's registration channel and the query cycle's, and applied as a
+  translation (no rotation or scaling).</p>
+  <p>Registration quality is then evaluated per cell as the Pearson correlation between the reference
+  and query registration channels over that cell's pixels. The idea is that a well-aligned cell has
+  the same structure in both cycles, so the two channels correlate; a misaligned one does not. Cells
+  whose correlation falls below <code>sc_registration_thresh</code> are dropped from the measurements
+  feeding the Intensities and Scaling tabs, so poor registration shows up here as data loss rather
+  than as silently wrong intensities.</p>
+  <p>The density plot shows the distribution of that correlation with the threshold marked. A single
+  peak well above the threshold is what you want. A second peak near zero means a subset of cells
+  failed to align. The sample images show the worst and best aligning fields, so the failure mode can
+  be judged by eye - a genuine misalignment looks like a visible offset between the two channels.</p>
+  <p>Note this metric is only meaningful when the registration channels carry real structure; on
+  channels that are mostly noise the correlation is low regardless of how good the alignment is.
+  Generally, a nucleus stain should provide a good anchor, as the stain is reliable and bright and the
+  nucleus shouldn't move excessively.</p>
+  {% endcall %}
   <div class="tab-layout">
     <aside class="tab-sidebar">
       <table class="stats">
@@ -232,6 +304,26 @@
 {% if flatfield.available %}
 <section id="tab-flatfield" class="tab-content">
   <h2>Flatfields</h2>
+  {% call explanation() %}
+  <p>Illumination across a field of view is never uniform - the centre is typically brighter than the
+  corners, due to the optics rather than the biology. Left uncorrected this becomes a position-dependent
+  intensity bias: the same cell measures differently depending on where in the field it happened to
+  land, which adds variance to every intensity feature and can masquerade as a real effect.</p>
+  <p>A flatfield model is fitted per plate and channel with a polynomial function or using BaSiCPy,
+  which estimates the smooth illumination profile shared across many images. Cell masks are supplied
+  as fitting weights so the model is driven by the illumination pattern rather than by where the cells
+  are. Each image is then divided by its channel's flatfield before anything else is measured.
+  Darkfields are shown, but currently not fitted, so will always produce a uniform image.</p>
+  <p>The <strong>flatfield</strong> panel shows the fitted profile: expect something smooth and
+  low-contrast, usually brighter in the middle. Sharp edges, or structure that looks like cells, mean
+  the fit has absorbed signal it should not have - which would then be divided out of the real data.
+  Also make note of the color scale of the flatfield: in the absence of a strong flatfield the pattern
+  may look random, but if the scale is very low it may be better to either tweak or skip the
+  estimation procedure. The <strong>evaluation</strong> panel shows the effect of applying it, for
+  checking that the correction flattens the field without introducing new artefacts. You expect a
+  horizontal line after correction, i.e. there is no relationship between the flatfield and the
+  corrected image's intensity.</p>
+  {% endcall %}
   <div class="tab-layout">
     <aside class="tab-sidebar">
       <table class="stats">
@@ -272,6 +364,26 @@
 {% if decon.available %}
 <section id="tab-decon" class="tab-content">
   <h2>Deconvolution</h2>
+  {% call explanation() %}
+  <p>Every microscope blurs what it images: a point source comes out spread over a small volume,
+  described by that channel's point spread function (PSF). Deconvolution attempts to invert that
+  blurring, recovering sharper structure and better-separated objects - which matters most for
+  punctate stains, where blur merges neighbouring spots into one.</p>
+  <p>This runs Richardson-Lucy deconvolution for <code>dc_niter</code> iterations against a
+  per-channel measured PSF. Richardson-Lucy is iterative and does not converge to a fixed point:
+  too few iterations leave the image blurred, too many amplify noise into speckle, introduce
+  "ghosting" artefacts and can push intensities well beyond their original range. The iteration count
+  is therefore a genuine quality/noise trade-off rather than a setting to maximise.</p>
+  <p>The before/after pairs are there to judge that trade-off by eye. Look for structure becoming
+  crisper and objects separating, and against a grainy or "pitted" background, ringing around bright
+  objects, or dim features disappearing - all signs of over-deconvolution. Note deconvolution changes
+  absolute intensities, so it runs before scaling and before any intensity is measured.</p>
+  <p>To ensure no values are clipped, deconvolution produces 32-bit float images, but these are too
+  costly to save as is. So currently the deconvolution result is rescaled against a constant value for
+  all images (<code>dc_clip_max</code>, defaults to 5&times;65535). This means the raw intensities and the
+  deconvoluted intensities will vary by that factor, trading a bit of dynamic range for the storage
+  efficiency of 16-bit uint.</p>
+  {% endcall %}
   <div class="tab-layout">
     <aside class="tab-sidebar">
       <table class="stats">
@@ -314,6 +426,27 @@
 {% if intensity.available %}
 <section id="tab-intensity" class="tab-content">
   <h2>(Unscaled) Intensities</h2>
+  {% call explanation() %}
+  <p>Per-cell intensity statistics measured on the <strong>unscaled</strong> finalized images - after
+  flatfield correction, registration and any deconvolution, but deliberately <em>before</em> scaling.
+  That ordering is the point of this tab: these are the numbers the scaling factors are derived from,
+  so this is where the raw, uncorrected differences between plates are visible.</p>
+  <p>Only cells passing registration QC are included, so this matches the population the scaling
+  factors were computed over rather than everything that was segmented.</p>
+  <p>The heatmaps show each statistic's spatial distribution per plate, and the distributions show its
+  shape per channel. Worth looking for:</p>
+  <ul>
+    <li><strong>Plate-to-plate offsets</strong> in the distributions - the expected technical variation
+    that the plate offsets are there to correct. Large offsets are normal; the Scaling tab shows
+    whether they were corrected.</li>
+    <li><strong>Spatial gradients</strong> within a plate, which plate offsets cannot fix, since they
+    apply one factor per plate. These point back at flatfield or focus problems.</li>
+    <li><strong>Saturation</strong> - a max statistic piling up against the top of the range means
+    signal was clipped at acquisition, and no amount of scaling recovers it.</li>
+    <li><strong>Bimodality</strong>, which usually means a subset of wells or fields behaved
+    differently and is worth tracing before it propagates into the scaling factors.</li>
+  </ul>
+  {% endcall %}
   <div class="tab-layout">
     <aside class="tab-sidebar">
       <select id="int-channel-select" onchange="showBlock('int-ch', this.value); syncIntensity();">
@@ -345,9 +478,11 @@
         {% for feature in intensity.features %}
         <div class="feature-block{{ ' active' if feature == intensity.default_feature else '' }}" data-group="int-feat-{{ channel }}" data-channel="{{ feature }}">
           <h3>Per-plate well-mean heatmaps</h3>
+          <div class="heatmap-grid">
           {% for plate, html in intensity.heatmaps_html[channel][feature].items() %}
-            {{ html | safe }}
+            <div>{{ html | safe }}</div>
           {% endfor %}
+          </div>
         </div>
         {% endfor %}
       </div>
@@ -361,6 +496,31 @@
 {% if scaling.available %}
 <section id="tab-scaling" class="tab-content">
   <h2>Scaling factors</h2>
+  {% call explanation() %}
+  <p>Scaling aims to achieve several goals:</p>
+  <ul>
+    <li>Use the dynamic range of the 16-bit uint optimally, so tools like CellProfiler don't have
+    issues with dim stains and the images don't need to be adjusted when viewing. Scaling particularly
+    influences the texture features in CellProfiler: for dim stains, or timeseries where the data has a
+    lot of dynamic range, the 255 intensity ranges can collapse the values into one or two bins, making
+    the distributions of these features singular.</li>
+    <li>Adjust the average intensity between plates to be the same. This is usually done on a set of
+    control cells expected to have constant intensity, and aims to correct for technical differences in
+    intensity signals.</li>
+    <li>Soft thresholding of scaling in the background region. Background values tend to be constant
+    regardless of the technical differences in intensity, hence the foreground signal may vary but the
+    background may not. By scaling the whole image this would adjust the constant background signal,
+    leading to min-intensity features incorrectly acquiring a batch signal. The soft thresholding step
+    fits a sigmoid curve between the estimated background intensity and the estimated foreground
+    intensity, and weighs the scaling accordingly. Background pixels are left untouched, foreground
+    pixels are scaled, and values in the middle get a downweighted version of the scaling factor
+    depending on their intensity and that plate's sigmoid.</li>
+  </ul>
+  <p>The scaling factors show how each plate is offset relative to each other, and how much it is
+  scaled to fully utilize the dynamic range of the 16-bit uint. The sigmoid plot shows the soft
+  threshold (y-axis) versus the intensity (x-axis). A y value of 0 indicates no scaling, a value of 1
+  indicates the full scaling factor is applied at that intensity level.</p>
+  {% endcall %}
   <div class="tab-layout">
     <aside class="tab-sidebar">
       <table class="stats">
@@ -414,6 +574,35 @@
 {% if debris.available %}
 <section id="tab-debris" class="tab-content">
   <h2>Debris</h2>
+  {% call explanation() %}
+  <p>Debris estimation is designed to aid in accurately estimating the background intensities for
+  scaling, as well as being a general QC metric. Debris is defined as a non-background signal
+  outside of the cell mask. The non-background is defined as follows:</p>
+  <ol>
+    <li>The cell region is masked</li>
+    <li>A threshold (<code>Otsu_log</code>, <code>Otsu</code>, <code>MCE</code>) is applied to the non-cell image</li>
+    <li>The ratio of the mean of the non-cell image and the threshold is calculated. The assumption
+    being that the threshold value of an image with only background will be near the mean of the
+    background image. A high ratio of threshold/mean-of-background indicates the presence of debris.</li>
+  </ol>
+
+  <p>Each image is then classified per channel into one of three groups:
+  <strong>no debris</strong> (threshold/mean ratio &lt; {{ debris.ratio_min }} - the threshold sits
+  close to the mean of the background suggesting there is no debris and thus the debris percentage
+  is not to be trusted), <strong>debris</strong> (ratio &ge; {{ debris.ratio_min }} AND debris %
+  &lt; {{ debris.debris_max_pct }} - a reliably measured, acceptable debris level), or
+  <strong>unusually high debris</strong> (ratio &ge; {{ debris.ratio_min }} AND
+  debris % &ge; {{ debris.debris_max_pct }} - a reliable ratio but an unusually high debris
+  fraction, often a sign the background itself is anomalous rather than a genuine debris
+  detection).</p>
+
+  <p>Common reasons debris may be present:</p>
+  <ul>
+    <li>Actual biological debris from dead/dying cells, or contamination</li>
+    <li>Too strict a mask, leaving rings around the cell</li>
+    <li>Registration errors in subsequent cycles causing poor overlap of the cell mask and the signal</li>
+  </ul>
+  {% endcall %}
 
   <div class="tab-layout">
     <aside class="tab-sidebar">
@@ -430,8 +619,6 @@
     </aside>
 
     <div class="tab-main">
-      <p>Each image is classified per channel into one of three groups: <strong>no debris</strong> (threshold/mean ratio &lt; {{ debris.ratio_min }} - the threshold sits close to the mean of the background suggesting there is no debris and thus the debris percentage is not to be trusted), <strong>debris</strong> (ratio &ge; {{ debris.ratio_min }} AND debris % &lt; {{ debris.debris_max_pct }} - a reliably measured, acceptable debris level), or <strong>uncertain</strong> (ratio &ge; {{ debris.ratio_min }} AND debris % &ge; {{ debris.debris_max_pct }} - a reliable ratio but an unusually high debris fraction, often a sign the background itself is anomalous rather than a genuine debris detection).</p>
-
       <table class="data-table" id="debris-summary-table">
         <thead>
           <tr>
@@ -441,8 +628,8 @@
             <th class="sortable" onclick="sortTable(this.closest('table'), 3, 'number')">% no debris</th>
             <th class="sortable" onclick="sortTable(this.closest('table'), 4, 'number')">Debris</th>
             <th class="sortable" onclick="sortTable(this.closest('table'), 5, 'number')">% debris</th>
-            <th class="sortable" onclick="sortTable(this.closest('table'), 6, 'number')">Uncertain</th>
-            <th class="sortable" onclick="sortTable(this.closest('table'), 7, 'number')">% uncertain</th>
+            <th class="sortable" onclick="sortTable(this.closest('table'), 6, 'number')">Unusually high debris</th>
+            <th class="sortable" onclick="sortTable(this.closest('table'), 7, 'number')">% unusually high debris</th>
             <th class="sortable" onclick="sortTable(this.closest('table'), 8, 'number')">Mean debris %</th>
             <th class="sortable" onclick="sortTable(this.closest('table'), 9, 'number')">Mean threshold</th>
             <th class="sortable" onclick="sortTable(this.closest('table'), 10, 'number')">Mean background</th>
@@ -457,8 +644,8 @@
             <td data-sort="{{ row.pct_no_debris }}">{{ row.pct_no_debris }}%</td>
             <td data-sort="{{ row.n_debris }}">{{ row.n_debris }}</td>
             <td data-sort="{{ row.pct_debris }}">{{ row.pct_debris }}%</td>
-            <td data-sort="{{ row.n_uncertain }}">{{ row.n_uncertain }}</td>
-            <td data-sort="{{ row.pct_uncertain }}">{{ row.pct_uncertain }}%</td>
+            <td data-sort="{{ row.n_unusually_high_debris }}">{{ row.n_unusually_high_debris }}</td>
+            <td data-sort="{{ row.pct_unusually_high_debris }}">{{ row.pct_unusually_high_debris }}%</td>
             <td data-sort="{{ row.mean_debris_pct if row.mean_debris_pct is not none else -1 }}">{{ row.mean_debris_pct if row.mean_debris_pct is not none else "n/a" }}</td>
             <td data-sort="{{ row.mean_threshold if row.mean_threshold is not none else -1 }}">{{ row.mean_threshold if row.mean_threshold is not none else "n/a" }}</td>
             <td data-sort="{{ row.mean_background if row.mean_background is not none else -1 }}">{{ row.mean_background if row.mean_background is not none else "n/a" }}</td>
@@ -487,19 +674,19 @@
         <div class="missing">No "no debris" sample images available for this channel</div>
         {% endif %}
 
-        <h3>Uncertain examples</h3>
-        {% if debris.sample_images_uncertain.get(channel) %}
-        <div class="carousel" id="debris-carousel-uncertain-{{ channel }}">
-          {# Filled in by debrisCarousel('uncertain', channel, 0) - see the note on reg-carousel-img #}
-          <img class="qc-img" id="debris-carousel-img-uncertain-{{ channel }}" alt="">
-          <div class="carousel-caption" id="debris-carousel-caption-uncertain-{{ channel }}"></div>
+        <h3>Unusually high debris examples</h3>
+        {% if debris.sample_images_unusually_high_debris.get(channel) %}
+        <div class="carousel" id="debris-carousel-unusually-high-debris-{{ channel }}">
+          {# Filled in by debrisCarousel('unusually_high_debris', channel, 0) - see the note on reg-carousel-img #}
+          <img class="qc-img" id="debris-carousel-img-unusually-high-debris-{{ channel }}" alt="">
+          <div class="carousel-caption" id="debris-carousel-caption-unusually-high-debris-{{ channel }}"></div>
           <div class="carousel-controls">
-            <button onclick="debrisCarousel('uncertain', {{ channel }}, -1)">&larr; Prev</button>
-            <button onclick="debrisCarousel('uncertain', {{ channel }}, 1)">Next &rarr;</button>
+            <button onclick="debrisCarousel('unusually_high_debris', {{ channel }}, -1)">&larr; Prev</button>
+            <button onclick="debrisCarousel('unusually_high_debris', {{ channel }}, 1)">Next &rarr;</button>
           </div>
         </div>
         {% else %}
-        <div class="missing">No uncertain sample images available for this channel</div>
+        <div class="missing">No unusually-high-debris sample images available for this channel</div>
         {% endif %}
 
         <h3>Debris (highest-debris) examples</h3>
@@ -601,8 +788,8 @@
       ],
     {% endfor %}
     },
-    uncertain: {
-    {% for channel, images in debris.sample_images_uncertain.items() %}
+    unusually_high_debris: {
+    {% for channel, images in debris.sample_images_unusually_high_debris.items() %}
       {{ channel }}: [
       {% for img in images %}
         {src: {{ img.data_uri | tojson }}, caption: {{ img.caption | tojson }}},

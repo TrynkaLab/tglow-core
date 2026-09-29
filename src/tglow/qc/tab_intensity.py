@@ -10,6 +10,7 @@ the template selects it explicitly rather than relying on dict order.
 import logging
 import re
 
+import numpy as np
 import plotly.graph_objects as go
 
 from tglow.qc.assets import histogram_bar, style_plot
@@ -55,14 +56,25 @@ def build_intensity_heatmaps(qced_df, channels, plate_formats):
             col = f"ch{channel}__{stat}"
             heatmaps[channel][label] = {}
 
+            # Built in two passes so every plate's heatmap for this channel/feature shares one
+            # color scale. Left to Plotly each plate autoscales to its own range, which makes
+            # plates look alike however far apart their intensities actually are - exactly the
+            # cross-plate difference this tab exists to show.
+            grids = {}
             for plate, plate_df in qced_df.groupby("plate"):
                 well_means = plate_df.groupby(["row", "col", "well"])[col].mean().reset_index()
-                grid, row_labels, col_labels = build_well_grid(
+                grids[plate] = build_well_grid(
                     well_means, row_col="row", col_col="col", value_col=col, agg="mean", plate_format=plate_formats[plate]
                 )
 
+            finite = [g for g, _, _ in grids.values() if np.any(np.isfinite(g))]
+            zmin = float(min(np.nanmin(g) for g in finite)) if finite else None
+            zmax = float(max(np.nanmax(g) for g in finite)) if finite else None
+
+            for plate, (grid, row_labels, col_labels) in grids.items():
                 fig = go.Figure(data=go.Heatmap(
                     z=grid, x=col_labels, y=row_labels, colorscale="Viridis",
+                    zmin=zmin, zmax=zmax,
                     colorbar=dict(title=label),
                     hovertemplate="row %{y} col %{x}<br>" + label + ": %{z:.1f}<extra></extra>",
                 ))

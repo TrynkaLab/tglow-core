@@ -1,6 +1,6 @@
 """Tab 7 (debris) - debris percentage vs threshold/mean ("mean/otsu") ratio per channel,
 per-plate/channel summary table, and clickable example image viewers for the
-"no_debris" (highest-ratio), "uncertain" (highest-debris) and "debris"
+"no_debris" (highest-ratio), "unusually_high_debris" (highest-debris) and "debris"
 (highest-debris-that-still-passed) classes.
 
 These three names are the single vocabulary for the classification: they key the
@@ -23,7 +23,7 @@ level/threshold separation is experiment-specific):
 - "debris" (threshold_mean_ratio >= ratio_min AND debris_percentage <
   debris_max_pct): a reliably measured, acceptable debris level - the normal,
   usable case.
-- "uncertain" (threshold_mean_ratio >= ratio_min AND debris_percentage >=
+- "unusually_high_debris" (threshold_mean_ratio >= ratio_min AND debris_percentage >=
   debris_max_pct): a reliable threshold but an unusually high debris fraction -
   often a sign the background itself is anomalously uniform/dark (making the
   debris mask spuriously large) rather than a genuine debris detection, so it's
@@ -44,7 +44,7 @@ log = logging.getLogger(__name__)
 CHANNEL_COLUMN_RE = re.compile(r"^ch(\d+)__debris_percentage$")
 
 DEBRIS_SAMPLE_RE = re.compile(
-    r"^(?P<plate>.+)_(?P<well>[A-Za-z]+\d+)_(?P<field>\d+)_ch(?P<channel>\d+)_(?P<sample_class>no_debris|uncertain|debris)_pct(?P<pct>[\d.]+)_ratio(?P<ratio>[\d.]+)_debris\.png$"
+    r"^(?P<plate>.+)_(?P<well>[A-Za-z]+\d+)_(?P<field>\d+)_ch(?P<channel>\d+)_(?P<sample_class>no_debris|unusually_high_debris|debris)_pct(?P<pct>[\d.]+)_ratio(?P<ratio>[\d.]+)_debris\.png$"
 )
 
 # "no_debris" samples are picked (and should be displayed) by highest ratio, not
@@ -98,7 +98,7 @@ def build_debris_scatter_plots(image_features, channels, debris_max_pct, ratio_m
 def build_debris_summary_table(image_features, channels, debris_max_pct, ratio_min):
     """One row per channel (across all plates): n_total, the 3-way classification counts (+ pct), mean debris %/threshold/background.
 
-    See the module docstring for the no_debris/debris/uncertain
+    See the module docstring for the no_debris/debris/unusually_high_debris
     definitions - every image with both stats present falls into exactly one.
     """
     rows = []
@@ -113,7 +113,7 @@ def build_debris_summary_table(image_features, channels, debris_max_pct, ratio_m
 
         n_no_debris = len(df[df[ratio_col] < ratio_min])
         n_debris = len(df[(df[ratio_col] >= ratio_min) & (df[pct_col] < debris_max_pct)])
-        n_uncertain = len(df[(df[ratio_col] >= ratio_min) & (df[pct_col] >= debris_max_pct)])
+        n_unusually_high_debris = len(df[(df[ratio_col] >= ratio_min) & (df[pct_col] >= debris_max_pct)])
 
         def _pct(n):
             return round(100 * n / n_total, 1) if n_total else 0
@@ -125,8 +125,8 @@ def build_debris_summary_table(image_features, channels, debris_max_pct, ratio_m
             "pct_no_debris": _pct(n_no_debris),
             "n_debris": n_debris,
             "pct_debris": _pct(n_debris),
-            "n_uncertain": n_uncertain,
-            "pct_uncertain": _pct(n_uncertain),
+            "n_unusually_high_debris": n_unusually_high_debris,
+            "pct_unusually_high_debris": _pct(n_unusually_high_debris),
             "mean_debris_pct": round(df[pct_col].mean(), 2) if n_total else None,
             "mean_threshold": round(image_features[threshold_col].mean(), 2) if threshold_col in image_features.columns else None,
             "mean_background": round(image_features[background_col].mean(), 2) if background_col in image_features.columns else None,
