@@ -536,8 +536,10 @@
     <li><strong>Plate-to-plate offsets</strong> in the distributions - the expected technical variation
     that the plate offsets are there to correct. Large offsets are normal; the Scaling tab shows
     whether they were corrected.</li>
-    <li><strong>Spatial gradients</strong> within a plate, which plate offsets cannot fix, since they
-    apply one factor per plate. These point back at flatfield or focus problems.</li>
+    <li><strong>Spatial gradients</strong> within a plate (these are not addressed by scaling - plate
+    offsets apply one factor per plate, so they cannot fix them). These point at row/column effects
+    caused by microscope drift, focus issues or a systematic staining problem. Depending on the plate
+    layout, spatial effects can also reflect biology (donor effects etc.).</li>
     <li><strong>Saturation</strong> - a max statistic piling up against the top of the range means
     signal was clipped at acquisition, and no amount of scaling recovers it.</li>
     <li><strong>Bimodality</strong>, which usually means a subset of wells or fields behaved
