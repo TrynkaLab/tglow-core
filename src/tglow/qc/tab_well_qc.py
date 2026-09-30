@@ -18,7 +18,7 @@ def load_well_qc(path):
     for col in INT_COLUMNS:
         if col in table.columns:
             table[col] = table[col].astype("Int64")
-    for col in ("missing_cycles", "qc_flags"):
+    for col in ("missing_cycles", "qc_flags_fail", "qc_flags_warn"):
         if col in table.columns:
             table[col] = table[col].fillna("")
     return table

@@ -237,7 +237,7 @@
   <p>One row per well, with the value behind each check and a single verdict - the same table as
   <code>rr__qc/well_qc.tsv</code>, which is the one to filter on in a downstream analysis. The verdict
   takes the worst outcome of any check (blacklisted &gt; fail &gt; warn &gt; pass), and
-  <code>qc_flags</code> names every check that tripped.</p>
+  <code>qc_flags_fail</code> and <code>qc_flags_warn</code> name every check that tripped at each level.</p>
   <ul>
     <li><strong>n_cells</strong> fails a well with fewer segmented cells than
     <code>qc_min_cells_per_well</code>, whatever the reason - seeding, focus or segmentation.</li>
