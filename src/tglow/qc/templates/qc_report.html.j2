@@ -59,6 +59,15 @@
   table.data-table th { font-weight: 600; opacity: 0.8; }
   table.data-table th.sortable { cursor: pointer; user-select: none; }
   table.data-table th.sortable:hover { text-decoration: underline; }
+  /* Well QC tab - a wide table (one column per checked channel), so it scrolls sideways rather than squeezing */
+  .table-scroll { overflow-x: auto; margin-bottom: 1.5rem; }
+  .table-scroll table.data-table { margin-bottom: 0; white-space: nowrap; }
+  .verdict { font-weight: 600; }
+  .verdict-fail { color: #d0453a; }
+  .verdict-warn { color: #c98a0b; }
+  .verdict-blacklisted { opacity: 0.6; }
+  .metric.metric-fail .value { color: #d0453a; }
+  .metric.metric-warn .value { color: #c98a0b; }
   .two-col { display: flex; gap: 1.5rem; align-items: flex-start; flex-wrap: wrap; }
   .two-col > div { flex: 1; min-width: 280px; }
   .two-col > .col-fixed { flex: 0 0 260px; }
@@ -139,6 +148,9 @@
 
   <nav><div class="inner">
     <button class="tab-btn active" data-tab="general">General QC</button>
+  {% if well_qc.available %}
+    <button class="tab-btn" data-tab="wellqc">Well QC</button>
+  {% endif %}
   {% if registration.available %}
     <button class="tab-btn" data-tab="registration">Registration</button>
   {% endif %}
@@ -180,6 +192,10 @@
     wells that failed any QC computed here.</li>
     <li><strong>Cycles</strong> is the number of imaging cycles merged into each final image. Anything
     other than 1 means registration ran, and the Registration tab applies.</li>
+    {% if well_qc.available %}
+    <li><strong>Failed wells</strong> and <strong>warned wells</strong> summarise the per-well QC verdicts;
+    the Well QC tab lists which wells they are and which check tripped.</li>
+    {% endif %}
   </ul>
   <p>The cells-per-well heatmaps show the spatial distribution of the segmentation yield across each
   plate. Read these for <em>patterns</em> rather than absolute numbers: edge effects, row or column
@@ -198,6 +214,10 @@
       <tr><td class="label">Blacklisted wells</td><td>{{ general.stats.n_blacklisted_wells }}</td></tr>
       <tr><td class="label">Images without cells</td><td>{{ general.stats.n_images_without_cells }}</td></tr>
       <tr><td class="label">Cycles</td><td>{{ general.stats.n_cycles if general.stats.n_cycles is not none else "n/a" }}</td></tr>
+      {% if well_qc.available %}
+      <tr><td class="label">Failed wells</td><td class="{{ 'verdict verdict-fail' if well_qc.counts.fail else '' }}">{{ well_qc.counts.fail }}</td></tr>
+      <tr><td class="label">Warned wells</td><td class="{{ 'verdict verdict-warn' if well_qc.counts.warn else '' }}">{{ well_qc.counts.warn }}</td></tr>
+      {% endif %}
     </table>
   </div>
 
@@ -208,6 +228,83 @@
   {% endfor %}
   </div>
 </section>
+
+<!-- ==================== Well QC ==================== -->
+{% if well_qc.available %}
+<section id="tab-wellqc" class="tab-content">
+  <h2>Well QC</h2>
+  {% call explanation() %}
+  <p>One row per well, with the value behind each check and a single verdict - the same table as
+  <code>rr__qc/well_qc.tsv</code>, which is the one to filter on in a downstream analysis. The verdict
+  takes the worst outcome of any check (blacklisted &gt; fail &gt; warn &gt; pass), and
+  <code>qc_flags</code> names every check that tripped.</p>
+  <ul>
+    <li><strong>n_cells</strong> fails a well with fewer segmented cells than
+    <code>qc_min_cells_per_well</code>, whatever the reason - seeding, focus or segmentation.</li>
+    <li><strong>pct_registered</strong> fails a well when fewer than <code>qc_min_pct_registered</code>
+    percent of its cells clear the registration threshold. Blank in a single-cycle run.</li>
+    <li><strong>missing_cycles</strong> fails a well that was not imaged in every cycle of its
+    registration group; it lists the plates it is missing from. Such a well cannot be registered, so it
+    otherwise silently drops out of the run.</li>
+    <li><strong>not_measured</strong> fails a well that was imaged in every cycle but has no
+    measurements, e.g. a task that failed and was ignored.</li>
+    <li><strong>pct_low_ch&lt;N&gt;</strong> warns when more than <code>qc_max_pct_low_signal</code>
+    percent of a well's cells sit close to their field's background in that channel. Warn-only, since a
+    dim channel is often real biology (a marker genuinely absent in that well).</li>
+  </ul>
+  <p>Blacklisted wells were excluded before anything was measured, so they carry no metrics.</p>
+  {% endcall %}
+  <div class="tab-layout">
+    <aside class="tab-sidebar">
+      <select id="wellqc-verdict-select" onchange="filterWellQc(this.value)">
+        <option value="all">All wells ({{ well_qc.n_wells }})</option>
+      {% for verdict, n in well_qc.counts.items() %}
+        <option value="{{ verdict }}">{{ verdict | capitalize }} ({{ n }})</option>
+      {% endfor %}
+      </select>
+    </aside>
+
+    <div class="tab-main">
+      <div class="stats-box">
+        <div class="metrics">
+          <div class="metric hero metric-fail"><div class="value">{{ well_qc.counts.fail }}</div><div class="label">Failed wells</div></div>
+          <div class="metric hero metric-warn"><div class="value">{{ well_qc.counts.warn }}</div><div class="label">Warned wells</div></div>
+          <div class="metric hero"><div class="value">{{ well_qc.counts.pass }}</div><div class="label">Passed wells</div></div>
+        </div>
+        <table class="stats">
+          <tr><td class="label">Blacklisted wells</td><td>{{ well_qc.counts.blacklisted }}</td></tr>
+          <tr><td class="label">Total wells</td><td>{{ well_qc.n_wells }}</td></tr>
+        </table>
+      </div>
+
+      <div class="table-scroll">
+      <table class="data-table" id="wellqc-table">
+        <thead>
+          <tr>
+          {% for col in well_qc.columns %}
+            <th class="sortable" onclick="sortTable(this.closest('table'), {{ loop.index0 }}, '{{ 'number' if col.numeric else 'string' }}')">{{ col.name }}</th>
+          {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+        {% for row in well_qc.rows %}
+          <tr data-verdict="{{ row.verdict }}">
+          {% for display, sort_key in row.cells %}
+            {% if well_qc.columns[loop.index0].name == "qc_verdict" %}
+            <td data-sort="{{ sort_key }}" class="verdict verdict-{{ display }}">{{ display }}</td>
+            {% else %}
+            <td data-sort="{{ sort_key }}">{{ display }}</td>
+            {% endif %}
+          {% endfor %}
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      </div>
+    </div>
+  </div>
+</section>
+{% endif %}
 
 <!-- ==================== Tab 2: Registration ==================== -->
 {% if registration.available %}
@@ -820,6 +917,12 @@
   Object.entries(debrisImages).forEach(([sampleClass, byChannel]) =>
     Object.keys(byChannel).forEach(channel => debrisCarousel(sampleClass, channel, 0)));
   {% endif %}
+
+  function filterWellQc(verdict) {
+    document.querySelectorAll('#wellqc-table tbody tr').forEach(tr => {
+      tr.style.display = (verdict === 'all' || tr.dataset.verdict === verdict) ? '' : 'none';
+    });
+  }
 
   function sortTable(table, col, type) {
     const tbody = table.tBodies[0];

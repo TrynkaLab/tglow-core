@@ -1,6 +1,6 @@
 """Assembles whichever QC tabs are available into one self-contained qc_report.html.
 
-Tab 1 (general) is always built. Tabs 2, 5 and 7 (registration/intensity/debris)
+Tab 1 (general) is always built, and the Well QC tab whenever a well_qc.tsv is given. Tabs 2, 5 and 7 (registration/intensity/debris)
 self-gate on whether their source columns are present in the measurements; tabs
 3, 4 and 6 (flatfield/decon/scaling) are independently optional and only included
 if their inputs are provided - see build_report()'s parameters.
@@ -17,7 +17,7 @@ import jinja2
 import plotly.offline
 import pandas as pd
 
-from tglow.qc import aggregate, tab_debris, tab_decon, tab_flatfield, tab_intensity, tab_registration, tab_scaling
+from tglow.qc import aggregate, tab_debris, tab_decon, tab_flatfield, tab_intensity, tab_registration, tab_scaling, tab_well_qc
 from tglow.qc.assets import image_to_data_uri
 from tglow.qc.plate_layout import infer_plate_formats
 from tglow.qc.warning_log import load_warnings
@@ -215,6 +215,7 @@ def build_report(
     sc_params=None,
     scaling_warnings_paths=None,
     debris_samples_dir=None,
+    well_qc_path=None,
     pipeline_version=None,
 ):
     """Build the QC report HTML and write it to output_path. See bin/render_qc_report.py for the CLI."""
@@ -247,6 +248,8 @@ def build_report(
         "flatfield": {"available": False},
         "decon": {"available": False},
         "scaling": {"available": False},
+        # Also read by Tab 1, for its failed/warned well counts
+        "well_qc": tab_well_qc.build_well_qc_tab(well_qc_path) if well_qc_path else {"available": False},
     }
 
     if show_flatfield:
