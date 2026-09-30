@@ -97,6 +97,19 @@ def build_correlation_density_plot(object_features, pattern, threshold):
     # margins either side.
     style_plot(fig, square=False)
     fig.update_layout(height=300, margin=dict(l=45, r=15, t=32, b=35))
+    if len(corr_cols) > 1:
+        # Plotly puts the legend to the right by default, which eats most of the
+        # sidebar's narrow width. Put it under the x-axis title instead, and grow the
+        # figure by a row per entry (the column names are long, so in the sidebar they
+        # stack one per line anyway) so the plot area stays the same height. The plot
+        # area is ~233px tall, so y=-0.2 puts the legend ~47px below the axis, clear of
+        # the "Correlation" axis title.
+        legend_height = 20 * len(corr_cols)
+        fig.update_layout(
+            height=320 + legend_height,
+            margin=dict(b=55 + legend_height),
+            legend=dict(orientation="h", x=0, xanchor="left", y=-0.2, yanchor="top"),
+        )
     return fig
 
 

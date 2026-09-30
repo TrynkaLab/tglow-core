@@ -335,7 +335,8 @@ class AICSImageReader():
                     nwells = nwells+1
                     wells[plate].add(well)
                     
-                    fields = glob.glob(f"{self.path}/{plate}/{row}/{col}/{self.pattern}")
+                    # Sorted so the image order (and so any seeded random sampling) is filesystem independent
+                    fields = sorted(glob.glob(f"{self.path}/{plate}/{row}/{col}/{self.pattern}"))
                     
                     if self.suffix is None:
                         filename = os.path.basename(os.path.normpath(fields[0]))
@@ -379,7 +380,7 @@ class AICSImageReader():
         log.info(wells)
     
     def __list_directories__(self, path):
-        return [ name for name in os.listdir(path) if os.path.isdir(os.path.join(path, name)) ]
+        return sorted(name for name in os.listdir(path) if os.path.isdir(os.path.join(path, name)))
     
     def get_wells(self, plate):
         return self.wells[plate]
