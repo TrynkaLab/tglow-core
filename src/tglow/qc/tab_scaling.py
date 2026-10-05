@@ -40,19 +40,51 @@ def build_scale_factor_barplot(scaling_index):
     return fig
 
 
-def build_sigmoid_plots(scaling_index, n_points=200):
-    """dict[channel] -> Plotly figure with one sigmoid curve per plate, x in [0, sigmoid_x2]."""
+def _is_borrowed_sigmoid(row):
+    """True when a plate's slope/bias were filled from the channel mean rather than fitted.
+
+    calculate_scaling_factors.py's fill_missing_sigmoid fills two cases: an inverted fit
+    (x2 <= x1 - x1/x2 are still written, but slope/bias are not) and a plate with no fit at
+    all (no control samples, so x1/x2 are NaN). Either way x1/x2 don't describe the curve.
+    """
+    x1, x2 = row.get("sigmoid_x1"), row.get("sigmoid_x2")
+    return pd.isna(x1) or pd.isna(x2) or x2 <= x1
+
+
+def build_sigmoid_plots(scaling_index, n_points=200, default_tol=1e-3):
+    """dict[channel] -> Plotly figure with one sigmoid curve per plate.
+
+    The x-range comes from the curve itself - [0, x where the sigmoid reaches 1 - tol] - not
+    from sigmoid_x2: for a fitted plate the two coincide, but a plate whose slope/bias were
+    borrowed from the channel mean keeps its own (inverted, or missing) x2, which can sit far
+    below the borrowed midpoint and plot nothing but ~0. Borrowed curves are drawn dashed.
+    """
     figures = {}
 
     for channel, channel_df in scaling_index.groupby("channel"):
+        # fill_missing_sigmoid copies slope/bias but not tol, so a borrowed row falls back to
+        # the channel's fitted tol
+        channel_tol = channel_df["sigmoid_tol"].dropna() if "sigmoid_tol" in channel_df else pd.Series(dtype=float)
+        channel_tol = channel_tol.median() if not channel_tol.empty else default_tol
+
         fig = go.Figure()
         for _, row in channel_df.iterrows():
-            x2 = row.get("sigmoid_x2")
-            if pd.isna(x2) or x2 <= 0:
+            slope, bias = row.get("sigmoid_slope"), row.get("sigmoid_bias")
+            if pd.isna(slope) or pd.isna(bias) or slope <= 0:
                 continue
-            x = np.linspace(0, x2, n_points)
-            y = sigmoid(x, row["sigmoid_slope"], row["sigmoid_bias"])
-            fig.add_trace(go.Scatter(x=x, y=y, mode="lines", name=str(row["ref_plate"])))
+
+            tol = row.get("sigmoid_tol")
+            tol = channel_tol if pd.isna(tol) else tol
+            x_max = bias + np.log(1 / tol - 1) / slope
+            if x_max <= 0:
+                continue
+
+            borrowed = _is_borrowed_sigmoid(row)
+            name = str(row["ref_plate"]) + (" (channel mean)" if borrowed else "")
+            x = np.linspace(0, x_max, n_points)
+            y = sigmoid(x, slope, bias)
+            fig.add_trace(go.Scatter(x=x, y=y, mode="lines", name=name,
+                                     line=dict(dash="dash" if borrowed else "solid")))
 
         fig.update_layout(
             title=f"Channel {channel} sigmoid soft-threshold curve",
