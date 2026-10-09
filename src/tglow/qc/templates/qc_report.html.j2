@@ -786,10 +786,10 @@
 
         <h3>Unusually high debris examples</h3>
         {% if debris.sample_images_unusually_high_debris.get(channel) %}
-        <div class="carousel" id="debris-carousel-unusually-high-debris-{{ channel }}">
+        <div class="carousel" id="debris-carousel-unusually_high_debris-{{ channel }}">
           {# Filled in by debrisCarousel('unusually_high_debris', channel, 0) - see the note on reg-carousel-img #}
-          <img class="qc-img" id="debris-carousel-img-unusually-high-debris-{{ channel }}" alt="">
-          <div class="carousel-caption" id="debris-carousel-caption-unusually-high-debris-{{ channel }}"></div>
+          <img class="qc-img" id="debris-carousel-img-unusually_high_debris-{{ channel }}" alt="">
+          <div class="carousel-caption" id="debris-carousel-caption-unusually_high_debris-{{ channel }}"></div>
           <div class="carousel-controls">
             <button onclick="debrisCarousel('unusually_high_debris', {{ channel }}, -1)">&larr; Prev</button>
             <button onclick="debrisCarousel('unusually_high_debris', {{ channel }}, 1)">Next &rarr;</button>
@@ -878,9 +878,14 @@
     const images = deconImages[channel];
     if (!images || !images.length) return;
     const next = ((deconIdx[channel] || 0) + delta + images.length) % images.length;
+    const img = document.getElementById('decon-carousel-img-' + channel);
+    const caption = document.getElementById('decon-carousel-caption-' + channel);
+    // Skip rather than throw - an exception here would abort the init loop below
+    // and leave every later carousel blank until clicked
+    if (!img || !caption) return;
     deconIdx[channel] = next;
-    document.getElementById('decon-carousel-img-' + channel).src = images[next].src;
-    document.getElementById('decon-carousel-caption-' + channel).textContent = images[next].caption + ' (' + (next + 1) + ' / ' + images.length + ')';
+    img.src = images[next].src;
+    caption.textContent = images[next].caption + ' (' + (next + 1) + ' / ' + images.length + ')';
   }
   // Render each carousel's first image - delta 0 leaves the index alone. Channels with
   // no images are skipped by the guard inside deconCarousel.
@@ -923,9 +928,13 @@
     if (!images || !images.length) return;
     const key = sampleClass + '-' + channel;
     const next = ((debrisIdx[key] || 0) + delta + images.length) % images.length;
+    const img = document.getElementById('debris-carousel-img-' + sampleClass + '-' + channel);
+    const caption = document.getElementById('debris-carousel-caption-' + sampleClass + '-' + channel);
+    // Skip rather than throw - see deconCarousel
+    if (!img || !caption) return;
     debrisIdx[key] = next;
-    document.getElementById('debris-carousel-img-' + sampleClass + '-' + channel).src = images[next].src;
-    document.getElementById('debris-carousel-caption-' + sampleClass + '-' + channel).textContent = images[next].caption + ' (' + (next + 1) + ' / ' + images.length + ')';
+    img.src = images[next].src;
+    caption.textContent = images[next].caption + ' (' + (next + 1) + ' / ' + images.length + ')';
   }
   Object.entries(debrisImages).forEach(([sampleClass, byChannel]) =>
     Object.keys(byChannel).forEach(channel => debrisCarousel(sampleClass, channel, 0)));
