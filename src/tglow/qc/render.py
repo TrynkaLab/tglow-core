@@ -142,14 +142,17 @@ def build_intensity_tab(object_features, pattern, threshold, plate_formats):
     }
 
 
-def build_scaling_tab(scaling_index_path, sc_params, scaling_warnings_paths=None):
+def build_scaling_tab(scaling_index_path, sc_params, scaling_warnings_paths=None, sigmoid_inputs_path=None):
     """Tab 6. scaling_warnings_paths are the scaling_warnings.tsv files written by
     calculate_scaling_factors/consensus_scaling_factors - surfaced here so the warnings
     sit next to the factors they are about, rather than only in the task's .command.err.
+    sigmoid_inputs_path is calculate_scaling_factors' sigmoid_inputs.tsv, drawn as
+    densities behind the sigmoid curves (None leaves the curves as they were).
     """
     scaling_index = tab_scaling.load_scaling_index(scaling_index_path)
+    sigmoid_inputs = tab_scaling.load_sigmoid_inputs(sigmoid_inputs_path)
     barplot = tab_scaling.build_scale_factor_barplot(scaling_index)
-    sigmoid_plots = tab_scaling.build_sigmoid_plots(scaling_index)
+    sigmoid_plots = tab_scaling.build_sigmoid_plots(scaling_index, sigmoid_inputs)
 
     warnings_df = load_warnings(scaling_warnings_paths)
 
@@ -214,6 +217,7 @@ def build_report(
     scaling_index_path=None,
     sc_params=None,
     scaling_warnings_paths=None,
+    sigmoid_inputs_path=None,
     debris_samples_dir=None,
     well_qc_path=None,
     pipeline_version=None,
@@ -261,7 +265,7 @@ def build_report(
         context["decon"] = build_decon_tab(decon_samples_dir, dc_params or {})
 
     if show_scaling:
-        context["scaling"] = build_scaling_tab(scaling_index_path, sc_params or {}, scaling_warnings_paths)
+        context["scaling"] = build_scaling_tab(scaling_index_path, sc_params or {}, scaling_warnings_paths, sigmoid_inputs_path)
 
     template_source = resources.files("tglow.qc").joinpath("templates", "qc_report.html.j2").read_text()
     env = jinja2.Environment(autoescape=False, trim_blocks=True, lstrip_blocks=True)

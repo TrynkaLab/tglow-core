@@ -545,6 +545,12 @@
     <li><strong>Bimodality</strong>, which usually means a subset of wells or fields behaved
     differently and is worth tracing before it propagates into the scaling factors.</li>
   </ul>
+  <p>Low intensities, and the low-signal warnings they raise (<code>pct_low_ch&lt;N&gt;</code> in the
+  Well QC tab), are not necessarily a problem. They can reflect biology rather than a technical
+  failure: a stain that is expected to be weak, a marker that is genuinely low or absent in some cells,
+  or specific conditions (treatments, knockouts, donors) that lower expression. Check whether the low
+  wells follow the plate layout - wells sharing a condition point at biology, while scattered wells or
+  whole rows/columns are more likely staining or acquisition issues.</p>
   {% endcall %}
   <div class="tab-layout">
     <aside class="tab-sidebar">
@@ -619,6 +625,11 @@
   scaled to fully utilize the dynamic range of the 16-bit uint. The sigmoid plot shows the soft
   threshold (y-axis) versus the intensity (x-axis). A y value of 0 indicates no scaling, a value of 1
   indicates the full scaling factor is applied at that intensity level.</p>
+  <p>Where available, the shaded areas behind each plate's curve show the control-image values the
+  curve was fit from: the background feature (left) and the foreground feature (right),
+  each scaled so its peak is 1. The marked points are the chosen quantiles of those
+  distributions, where the curve starts (lower) and reaches full scaling (upper). A curve that does
+  not sit between its two distributions points at a poorly chosen feature or quantile.</p>
   {% endcall %}
   <div class="tab-layout">
     <aside class="tab-sidebar">

@@ -6,18 +6,33 @@ only thing that writes scaling_index.tsv - manual scaling never does).
 
 import logging
 
+import os
+
 import numpy as np
 import pandas as pd
+import plotly.colors
 import plotly.graph_objects as go
+from scipy.stats import gaussian_kde
 
 from tglow.qc.assets import style_plot
 from tglow.utils.tglow_utils import sigmoid
 
 log = logging.getLogger(__name__)
 
+SIGMOID_INPUT_COLS = ["plate", "channel", "well", "field", "lower", "upper"]
+
 
 def load_scaling_index(scaling_index_path):
     return pd.read_csv(scaling_index_path, sep="\t", index_col=0)
+
+
+def load_sigmoid_inputs(sigmoid_inputs_path):
+    """sigmoid_inputs.tsv from calculate_scaling_factors, or an empty frame when absent/empty (e.g. a stub run's touched file)."""
+    if sigmoid_inputs_path is None or not os.path.exists(sigmoid_inputs_path) or os.path.getsize(sigmoid_inputs_path) == 0:
+        return pd.DataFrame(columns=SIGMOID_INPUT_COLS)
+
+    df = pd.read_csv(sigmoid_inputs_path, sep="\t", dtype={"plate": str})
+    return df
 
 
 def build_scale_factor_barplot(scaling_index):
@@ -51,15 +66,64 @@ def _is_borrowed_sigmoid(row):
     return pd.isna(x1) or pd.isna(x2) or x2 <= x1
 
 
-def build_sigmoid_plots(scaling_index, n_points=200, default_tol=1e-3):
+def _peak_scaled_density(values, x):
+    """Gaussian KDE of values on grid x, divided by its maximum so the peak is 1, or None when it can't be fit."""
+    values = np.asarray(values, dtype=float)
+    values = values[np.isfinite(values)]
+    if len(values) < 2 or np.ptp(values) == 0:
+        return None
+
+    try:
+        kde = gaussian_kde(values)
+    except np.linalg.LinAlgError:
+        return None
+
+    y = kde(x)
+    peak = y.max()
+    if not np.isfinite(peak) or peak <= 0:
+        return None
+
+    return kde, peak, y / peak
+
+
+def _rgba(hex_color, alpha):
+    r, g, b = plotly.colors.hex_to_rgb(hex_color)
+    return f"rgba({r},{g},{b},{alpha})"
+
+
+def _marker_label(row, plate, which):
+    """Hover text for an x1/x2 marker, naming the quantile and feature when scaling_index carries them."""
+    value = row.get(f"sigmoid_{which}")
+    side = "lower" if which == "x1" else "upper"
+    quantile, feature = row.get(f"sigmoid_{side}_quantile"), row.get(f"sigmoid_{side}_feature")
+    label = f"{plate} {which} = {value:.1f}"
+    if not pd.isna(quantile) and not pd.isna(feature):
+        label += f" (q{quantile:g} of {feature})"
+    return label
+
+
+def build_sigmoid_plots(scaling_index, sigmoid_inputs=None, n_points=200, default_tol=1e-3):
     """dict[channel] -> Plotly figure with one sigmoid curve per plate.
 
     The x-range comes from the curve itself - [0, x where the sigmoid reaches 1 - tol] - not
     from sigmoid_x2: for a fitted plate the two coincide, but a plate whose slope/bias were
     borrowed from the channel mean keeps its own (inverted, or missing) x2, which can sit far
     below the borrowed midpoint and plot nothing but ~0. Borrowed curves are drawn dashed.
+
+    sigmoid_inputs (calculate_scaling_factors' sigmoid_inputs.tsv) adds, per plate, the
+    control-image distributions x1/x2 were taken from: the sigmoid_lower_feature values
+    and sigmoid_upper_feature values, as shaded KDEs (no outline) peak-scaled to 1 so they
+    share the sigmoid's 0-1 axis, with markers where x1/x2 land. The x-range is then
+    extended to cover them. Channels without inputs are drawn exactly as before.
     """
     figures = {}
+    if sigmoid_inputs is None:
+        sigmoid_inputs = pd.DataFrame(columns=SIGMOID_INPUT_COLS)
+
+    # One colour per plate, shared by its curve, densities and markers, and stable across channels
+    palette = plotly.colors.qualitative.Plotly
+    plates = sorted(scaling_index["ref_plate"].astype(str).unique())
+    plate_color = {plate: palette[i % len(palette)] for i, plate in enumerate(plates)}
 
     for channel, channel_df in scaling_index.groupby("channel"):
         # fill_missing_sigmoid copies slope/bias but not tol, so a borrowed row falls back to
@@ -67,7 +131,11 @@ def build_sigmoid_plots(scaling_index, n_points=200, default_tol=1e-3):
         channel_tol = channel_df["sigmoid_tol"].dropna() if "sigmoid_tol" in channel_df else pd.Series(dtype=float)
         channel_tol = channel_tol.median() if not channel_tol.empty else default_tol
 
-        fig = go.Figure()
+        channel_inputs = sigmoid_inputs[sigmoid_inputs["channel"] == channel]
+        has_inputs = not channel_inputs.empty
+
+        # Curve parameters first, so the shared x-range is known before anything is drawn
+        curves = []
         for _, row in channel_df.iterrows():
             slope, bias = row.get("sigmoid_slope"), row.get("sigmoid_bias")
             if pd.isna(slope) or pd.isna(bias) or slope <= 0:
@@ -78,18 +146,64 @@ def build_sigmoid_plots(scaling_index, n_points=200, default_tol=1e-3):
             x_max = bias + np.log(1 / tol - 1) / slope
             if x_max <= 0:
                 continue
+            curves.append((row, slope, bias, x_max))
 
+        x_end = max([c[3] for c in curves], default=0)
+        if has_inputs:
+            # Cover the densities too, otherwise everything above a median x2 is cut off
+            x_end = max(x_end, np.nanquantile(channel_inputs[["lower", "upper"]].to_numpy(dtype=float), 0.99))
+        grid = np.linspace(0, x_end, n_points) if x_end > 0 else None
+
+        density_traces, curve_traces, marker_traces = [], [], []
+        plates_with_curve = {str(c[0]["ref_plate"]) for c in curves}
+
+        for row, slope, bias, x_max in curves:
+            plate = str(row["ref_plate"])
             borrowed = _is_borrowed_sigmoid(row)
-            name = str(row["ref_plate"]) + (" (channel mean)" if borrowed else "")
-            x = np.linspace(0, x_max, n_points)
+            name = plate + (" (channel mean)" if borrowed else "")
+            # Without inputs each curve keeps its own range, exactly as before
+            x = grid if has_inputs else np.linspace(0, x_max, n_points)
             y = sigmoid(x, slope, bias)
-            fig.add_trace(go.Scatter(x=x, y=y, mode="lines", name=name,
-                                     line=dict(dash="dash" if borrowed else "solid")))
+            curve_traces.append(go.Scatter(x=x, y=y, mode="lines", name=name, legendgroup=plate,
+                                           line=dict(dash="dash" if borrowed else "solid", color=plate_color[plate])))
+
+        if has_inputs and grid is not None:
+            for _, row in channel_df.iterrows():
+                plate = str(row["ref_plate"])
+                plate_inputs = channel_inputs[channel_inputs["plate"].astype(str) == plate]
+                if plate_inputs.empty:
+                    continue
+
+                color = plate_color[plate]
+                # A plate with inputs but no drawable curve still needs a legend entry
+                show_legend = plate not in plates_with_curve
+
+                for which, col in [("x1", "lower"), ("x2", "upper")]:
+                    density = _peak_scaled_density(plate_inputs[col], grid)
+                    if density is not None:
+                        kde, peak, y = density
+                        density_traces.append(go.Scatter(
+                            x=grid, y=y, mode="lines", fill="tozeroy", fillcolor=_rgba(color, 0.15),
+                            line=dict(width=0), name=plate, legendgroup=plate,
+                            showlegend=show_legend, hoverinfo="skip"))
+                        show_legend = False
+
+                    value = row.get(f"sigmoid_{which}")
+                    if pd.isna(value):
+                        continue
+                    marker_y = kde(value)[0] / peak if density is not None else 1.0
+                    marker_traces.append(go.Scatter(
+                        x=[value], y=[marker_y], mode="markers", legendgroup=plate, showlegend=False,
+                        marker=dict(color=color, size=10),
+                        name=_marker_label(row, plate, which), hovertemplate="%{fullData.name}<extra></extra>"))
+
+        # Densities underneath, then the curves, then the markers on top
+        fig = go.Figure(data=density_traces + curve_traces + marker_traces)
 
         fig.update_layout(
             title=f"Channel {channel} sigmoid soft-threshold curve",
             xaxis_title="Intensity",
-            yaxis_title="Sigmoid weight",
+            yaxis_title="Sigmoid weight / scaled density" if has_inputs else "Sigmoid weight",
         )
         # square=False drops style_plot's fixed 480x480 so the curve spans the full column
         # width: it is read along the intensity axis, and several plates' curves sit close
