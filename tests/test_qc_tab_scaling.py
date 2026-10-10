@@ -60,6 +60,25 @@ def test_densities_are_peak_scaled_and_markers_sit_on_x1_x2():
     assert "q0.95 of ch0__background_q75" in markers[0].name
 
 
+def test_markers_stay_on_a_narrow_tied_density():
+    # A tight integer-valued background is far narrower than the shared grid's spacing, so
+    # a grid-only peak was underestimated and the x1 marker plotted near 3, off the line
+    rng = np.random.default_rng(0)
+    lower = np.round(rng.normal(100, 2, 300))
+    upper = np.round(rng.lognormal(np.log(2000), 0.6, 300))
+    inputs = pd.DataFrame({"plate": "P1", "channel": 0, "well": "A01", "field": 1, "lower": lower, "upper": upper})
+    si = _scaling_index([_row("P1", 0, np.quantile(lower, 0.95), np.quantile(upper, 0.5))])
+    fig = build_sigmoid_plots(si, inputs)[0]
+    curves, density, markers = _by_kind(fig)
+
+    assert len(density) == 2 and len(markers) == 2
+    for marker, trace in zip(markers, density):
+        assert marker.y[0] <= 1.0
+        # The marker is a vertex of its density line
+        i = list(trace.x).index(marker.x[0])
+        assert np.isclose(trace.y[i], marker.y[0])
+
+
 def test_plate_shares_one_colour_and_legend_group():
     rng = np.random.default_rng(1)
     si = _scaling_index([_row("P1", 0, 250, 1500)])

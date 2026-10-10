@@ -66,8 +66,15 @@ def _is_borrowed_sigmoid(row):
     return pd.isna(x1) or pd.isna(x2) or x2 <= x1
 
 
-def _peak_scaled_density(values, x):
-    """Gaussian KDE of values on grid x, divided by its maximum so the peak is 1, or None when it can't be fit."""
+def _peak_scaled_density(values, grid, marker_x=()):
+    """Gaussian KDE of values, divided by its maximum so the peak is 1, or None when it can't be fit.
+
+    Returns (kde, peak, x, y). x is grid plus the in-range data values and marker_x: a
+    distribution much narrower than the grid spacing (a tight background, often with many
+    tied integer values) peaks between grid points, so on the grid alone the peak is
+    underestimated - markers then land above 1 - and a marker at an arbitrary x falls
+    between vertices, off the drawn line. Evaluating at the data and markers resolves both.
+    """
     values = np.asarray(values, dtype=float)
     values = values[np.isfinite(values)]
     if len(values) < 2 or np.ptp(values) == 0:
@@ -78,12 +85,15 @@ def _peak_scaled_density(values, x):
     except np.linalg.LinAlgError:
         return None
 
+    in_range = values[(values >= grid[0]) & (values <= grid[-1])]
+    marker_x = np.asarray(marker_x, dtype=float)
+    x = np.union1d(np.union1d(grid, in_range), marker_x[np.isfinite(marker_x)])
     y = kde(x)
     peak = y.max()
     if not np.isfinite(peak) or peak <= 0:
         return None
 
-    return kde, peak, y / peak
+    return kde, peak, x, y / peak
 
 
 def _rgba(hex_color, alpha):
@@ -179,18 +189,19 @@ def build_sigmoid_plots(scaling_index, sigmoid_inputs=None, n_points=200, defaul
                 show_legend = plate not in plates_with_curve
 
                 for which, col in [("x1", "lower"), ("x2", "upper")]:
-                    density = _peak_scaled_density(plate_inputs[col], grid)
+                    value = row.get(f"sigmoid_{which}")
+                    density = _peak_scaled_density(plate_inputs[col], grid, [] if pd.isna(value) else [value])
                     if density is not None:
-                        kde, peak, y = density
+                        kde, peak, x, y = density
                         density_traces.append(go.Scatter(
-                            x=grid, y=y, mode="lines", fill="tozeroy", fillcolor=_rgba(color, 0.15),
+                            x=x, y=y, mode="lines", fill="tozeroy", fillcolor=_rgba(color, 0.15),
                             line=dict(width=0), name=plate, legendgroup=plate,
                             showlegend=show_legend, hoverinfo="skip"))
                         show_legend = False
 
-                    value = row.get(f"sigmoid_{which}")
                     if pd.isna(value):
                         continue
+                    # value is one of the density's x points, so the marker sits on a vertex of the line
                     marker_y = kde(value)[0] / peak if density is not None else 1.0
                     marker_traces.append(go.Scatter(
                         x=[value], y=[marker_y], mode="markers", legendgroup=plate, showlegend=False,
