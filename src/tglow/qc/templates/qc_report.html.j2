@@ -39,6 +39,7 @@
   .warn-box h3 { margin: 0 0 0.5rem; font-size: 0.95rem; }
   .warn-box-empty { background: rgba(136, 136, 136, 0.07); border-color: rgba(136, 136, 136, 0.25); }
   .warn-none { margin: 0; font-size: 0.85rem; opacity: 0.7; }
+  .plot-hint { margin: -0.25rem 0 0.75rem; font-size: 0.85rem; font-style: italic; opacity: 0.7; }
   /* Per-tab "Explanation" block - collapsed by default so the tab still opens on its data */
   .explain { border: 1px solid rgba(136, 136, 136, 0.28); border-radius: 8px; margin-bottom: 1.5rem; background: rgba(136, 136, 136, 0.05); }
   .explain > summary { cursor: pointer; padding: 0.55rem 0.9rem; font-weight: 600; font-size: 0.9rem; list-style: none; user-select: none; }
@@ -670,6 +671,7 @@
       {{ scaling.barplot_html | safe }}
 
       <h3>Sigmoid curves</h3>
+      <p class="plot-hint">Double-click a plate in the legend to show only that plate, single-click others to add them back, and double-click again to show all.</p>
       {% for channel in scaling.sigmoid_html.keys() | sort %}
       <div class="channel-block{{ ' active' if loop.first else '' }}" data-group="sig" data-channel="{{ channel }}">
         {{ scaling.sigmoid_html[channel] | safe }}
